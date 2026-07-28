@@ -45,6 +45,10 @@ jobs:
       - name: Run checks
         run: pnpm run check
 
+      - name: Audit production dependencies
+        if: matrix.node == 22
+        run: pnpm audit --prod --audit-level high
+
   container:
     name: Container build
     needs: test
