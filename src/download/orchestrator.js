@@ -1,0 +1,118 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import { config } from "../config.js";
+import { DownloadMethodError, UserFacingError, userError } from "../utils/errors.js";
+import { assertPublicHttpUrl } from "../utils/security.js";
+import { log } from "../utils/logger.js";
+import { planEngines } from "./planner.js";
+import { commitArtifact, recoverArtifact, validateArtifact } from "./artifact.js";
+import { downloadDirectHttp } from "./engines/directHttp.js";
+import { downloadWithYtDlp } from "./engines/ytDlp.js";
+import { downloadWithCobalt } from "./engines/cobalt.js";
+import { downloadWithYouTubeJs } from "./engines/youtubeJs.js";
+import { downloadWithGalleryDl } from "./engines/galleryDl.js";
+
+const DEFAULT_ENGINES = new Map([
+    ["direct-http", downloadDirectHttp],
+    ["yt-dlp", downloadWithYtDlp],
+    ["cobalt", downloadWithCobalt],
+    ["youtube-js", downloadWithYouTubeJs],
+    ["gallery-dl", downloadWithGalleryDl],
+]);
+
+function abortError() {
+    return userError(
+        "The job timed out before the download finished. Try a smaller file or a faster source.",
+        "JOB_TIMEOUT",
+        { stopFallback: true },
+    );
+}
+
+function publicFailure(attempts) {
+    const messages = attempts.map((attempt) => attempt.error).join(" ");
+    if (/account authentication|cookies|login required|empty media response/i.test(messages)) {
+        return "This post needs an authenticated session. Export fresh browser cookies to MEDIA_COOKIES_FILE, then try again.";
+    }
+    if (/HTTP (?:Error )?403|forbidden/i.test(messages)) {
+        return "This source blocked automated access (HTTP 403), and no enabled engine could extract its media. Try a direct media URL or another source.";
+    }
+    if (/unsupported url|no suitable extractor/i.test(messages)) {
+        return "This site or URL is not supported by the enabled download engines.";
+    }
+    return "No enabled engine could produce a valid media file from this URL.";
+}
+
+export async function downloadMedia(rawUrl, jobDir, options = {}) {
+    await assertPublicHttpUrl(rawUrl);
+    const outputType = options.outputType ?? "video";
+    const maxBytes = options.maxBytes ?? config.maxDownloadBytes;
+    const engineRegistry = options.engines ?? DEFAULT_ENGINES;
+    const plan = options.plan ?? planEngines(rawUrl, outputType);
+    const attempts = [];
+
+    for (const [index, engineName] of plan.entries()) {
+        if (options.signal?.aborted) throw abortError();
+        const engine = engineRegistry.get(engineName);
+        if (!engine) continue;
+        const attemptDir = path.join(jobDir, `attempt-${String(index + 1).padStart(2, "0")}-${engineName}`);
+        await fs.mkdir(attemptDir, { recursive: true });
+        const startedAt = performance.now();
+        await options.onStatus?.({
+            phase: "resolving",
+            engine: engineName,
+            attempt: index + 1,
+            totalAttempts: plan.length,
+        });
+
+        try {
+            const candidate = await engine(rawUrl, attemptDir, {
+                ...options,
+                maxBytes,
+                outputType,
+                onProgress: (progress) => options.onStatus?.({ phase: "downloading", engine: engineName, progress }),
+            });
+            const validated = await validateArtifact(candidate, {
+                outputType,
+                maxBytes,
+                preferredName: candidate.fileName,
+                signal: options.signal,
+            });
+            const committed = await commitArtifact({ ...candidate, ...validated }, jobDir);
+            return {
+                ...committed,
+                method: candidate.method || engineName,
+                metadata: candidate.metadata ?? null,
+                attempts,
+                recovered: Boolean(candidate.recoveredFromProcessError),
+            };
+        } catch (error) {
+            if (error instanceof UserFacingError && error.stopFallback) throw error;
+            if (error?.name === "AbortError" || options.signal?.aborted) throw abortError();
+
+            const recovered = await recoverArtifact(attemptDir, { outputType, maxBytes, signal: options.signal });
+            if (recovered) {
+                log.warn(
+                    `${engineName} failed after producing a valid artifact; committing the artifact and stopping fallback.`,
+                );
+                return {
+                    ...(await commitArtifact(recovered, jobDir)),
+                    method: engineName,
+                    metadata: null,
+                    attempts,
+                    recovered: true,
+                };
+            }
+
+            const detail = error instanceof DownloadMethodError ? error.publicMessage : error.message;
+            attempts.push({ engine: engineName, error: detail, elapsedMs: performance.now() - startedAt });
+            log.warn(`${engineName} failed: ${detail}`);
+            await fs.rm(attemptDir, { recursive: true, force: true });
+        }
+    }
+
+    const error = userError(publicFailure(attempts), "DOWNLOAD_FAILED");
+    error.attempts = attempts;
+    throw error;
+}
+
+export { DEFAULT_ENGINES };

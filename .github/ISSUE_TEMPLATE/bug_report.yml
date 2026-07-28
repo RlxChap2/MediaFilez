@@ -1,0 +1,88 @@
+name: Bug report
+description: Report a reproducible download, processing, or Discord delivery failure.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Remove tokens, cookies, private URLs, usernames, and other credentials before submitting.
+
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Failure stage
+      options:
+        - Resolving or downloading
+        - Processing with FFmpeg
+        - Uploading to Discord
+        - Metadata
+        - Startup or configuration
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: output
+    attributes:
+      label: Requested output
+      options:
+        - Video
+        - Audio
+        - Image
+        - Thumbnail
+        - Not applicable
+    validations:
+      required: true
+
+  - type: input
+    id: source
+    attributes:
+      label: Public reproduction URL
+      description: Use a public URL that maintainers can access. Leave blank if the source is private.
+      placeholder: https://example.com/public-post
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the user-facing error and relevant redacted log lines.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: v2.0.0 or commit SHA
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment
+      options:
+        - Docker Compose
+        - Local Node.js
+        - PM2
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks
+      options:
+        - label: I removed tokens, cookies, credentials, and private information.
+          required: true
+        - label: I searched existing issues for the same failure.
+          required: true

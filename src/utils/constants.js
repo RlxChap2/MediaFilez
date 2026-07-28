@@ -1,0 +1,14 @@
+import { DISCORD_HARD_MAX_BYTES, MB } from '../config.js';
+
+export const FILE_LIMITS = {
+  DEFAULT_UPLOAD: 25 * MB,
+  MAX_DOWNLOAD: DISCORD_HARD_MAX_BYTES,
+};
+
+export const OUTPUT_TYPES = new Set(['video', 'image', 'thumbnail', 'audio']);
+
+export const SUPPORTED_VIDEO = new Set(['.mp4', '.webm', '.mov', '.avi', '.mkv', '.flv', '.wmv', '.m4v', '.3gp']);
+export const SUPPORTED_IMAGE = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff', '.avif']);
+export const SUPPORTED_AUDIO = new Set(['.mp3', '.ogg', '.opus', '.wav', '.flac', '.m4a', '.aac', '.wma']);
+
+export const SUPPORTED_ALL = new Set([...SUPPORTED_VIDEO, ...SUPPORTED_IMAGE, ...SUPPORTED_AUDIO]);

@@ -1,0 +1,47 @@
+import { MessageFlags } from "discord.js";
+import { log } from "../utils/logger.js";
+import { messageForError } from "../utils/errors.js";
+import { handleMediaCommand } from "../jobs/mediaJob.js";
+
+async function sendError(interaction, error) {
+    if (error?.responseLocked) return;
+    const content = `Request failed: ${messageForError(error)}`;
+
+    try {
+        if (interaction.deferred || interaction.replied) {
+            await interaction.editReply({ content, files: [] });
+            return;
+        }
+
+        await interaction.reply({ content, flags: MessageFlags.Ephemeral });
+    } catch (replyError) {
+        log.error("Failed to send error reply:", replyError.message);
+    }
+}
+
+function isUnknownInteraction(error) {
+    return error?.code === 10062 || error?.rawError?.code === 10062;
+}
+
+export async function handleCommand(interaction) {
+    if (!interaction.isChatInputCommand()) return;
+
+    try {
+        if (interaction.commandName === "media") {
+            await handleMediaCommand(interaction);
+            return;
+        }
+
+        await interaction.reply({
+            content: "Unknown command.",
+            flags: MessageFlags.Ephemeral,
+        });
+    } catch (error) {
+        if (isUnknownInteraction(error)) {
+            log.warn(`/${interaction.commandName} expired before Discord accepted the initial response.`);
+            return;
+        }
+        log.error(`/${interaction.commandName} failed:`, error.stack || error.message);
+        await sendError(interaction, error);
+    }
+}

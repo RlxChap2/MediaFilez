@@ -1,0 +1,42 @@
+{
+    "name": "mediafilez",
+    "version": "2.0.0",
+    "description": "Discord media downloader with verified artifacts and ordered engine fallbacks",
+    "packageManager": "pnpm@11.9.0",
+    "main": "src/index.js",
+    "type": "module",
+    "scripts": {
+        "start": "node src/index.js",
+        "deploy": "node src/deploy-commands.js",
+        "prod:start": "node src/deploy-commands.js && node src/index.js",
+        "dev": "node --watch src/index.js",
+        "test": "node --test test/unit/*.test.js",
+        "check": "node test/check-syntax.js && pnpm test",
+        "preflight": "node test/preflight.js",
+        "smoke:download": "node test/smoke-download.js",
+        "smoke:process": "node test/smoke-process.js",
+        "smoke:fit": "node test/smoke-fit.js",
+        "diagnose:engines": "node test/diagnose-engines.js"
+    },
+    "keywords": [
+        "discord",
+        "bot",
+        "media",
+        "downloader",
+        "user-install"
+    ],
+    "author": "MediaFilez contributors",
+    "license": "MIT",
+    "dependencies": {
+        "discord.js": "^14.27.0",
+        "dotenv": "^17.4.2",
+        "file-type": "^22.0.1",
+        "p-queue": "^9.3.3",
+        "sanitize-filename": "^1.6.4",
+        "youtube-dl-exec": "^3.1.9",
+        "youtubei.js": "^17.2.0"
+    },
+    "engines": {
+        "node": ">=22"
+    }
+}

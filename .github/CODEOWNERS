@@ -1,0 +1,6 @@
+* @RlxChap2
+
+/.github/workflows/ @RlxChap2
+/src/config.js @RlxChap2
+/src/utils/security.js @RlxChap2
+/src/download/engines/directHttp.js @RlxChap2
