@@ -206,7 +206,6 @@ export class ReplySession {
             await this.interaction.editReply({
                 content: `Could not finish: ${messageForError(error)}`,
                 files: [],
-                ephemeral: true,
             });
             this.state = "failed";
         } catch (replyError) {

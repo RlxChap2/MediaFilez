@@ -32,6 +32,19 @@ test('commits once and never overwrites success with a later error', async (t) =
   assert.equal(edits[0].files.length, 1);
 });
 
+test('does not try to change reply visibility after the initial response', async () => {
+  const edits = [];
+  const interaction = {
+    editReply: async (payload) => { edits.push(payload); },
+  };
+  const reply = new ReplySession(interaction);
+
+  await reply.fail(new Error('failed'));
+
+  assert.equal(edits.length, 1);
+  assert.equal('ephemeral' in edits[0], false);
+});
+
 test('treats a rejected edit as success when Discord already has the attachment', async (t) => {
   const output = await fixture(t);
   const interaction = {

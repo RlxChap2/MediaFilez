@@ -1,4 +1,4 @@
-import { Client, Events, GatewayIntentBits, Partials } from "discord.js";
+import { Client, Events, GatewayIntentBits } from "discord.js";
 import { config, requireConfig } from "./config.js";
 import { formatBytes } from "./utils/format.js";
 import { log } from "./utils/logger.js";
@@ -17,8 +17,8 @@ if (!ffmpegReady) {
 }
 
 const client = new Client({
-    intents: [Object.keys(GatewayIntentBits)],
-    partials: [Object.keys(Partials)],
+    intents: [GatewayIntentBits.Guilds],
+    allowedMentions: { parse: [] },
     rest: {
         timeout: config.discordRestTimeoutMs,
         retries: config.discordRestRetries,

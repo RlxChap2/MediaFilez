@@ -1,5 +1,5 @@
 import PQueue from "p-queue";
-import { MessageFlags } from "discord.js";
+import { MessageFlags, PermissionFlagsBits } from "discord.js";
 import { config, DISCORD_HARD_MAX_BYTES } from "../config.js";
 import { FILE_LIMITS, OUTPUT_TYPES } from "../utils/constants.js";
 import { createRequestTempDir, cleanupTempDir } from "../utils/temp.js";
@@ -12,6 +12,35 @@ import { ReplySession } from "../platform/discord/replySession.js";
 
 const queue = new PQueue({ concurrency: config.maxConcurrentJobs });
 const activeByUser = new Map();
+
+const PUBLIC_DELIVERY_PERMISSIONS = [
+    [PermissionFlagsBits.ViewChannel, "View Channel"],
+    [PermissionFlagsBits.SendMessages, "Send Messages"],
+    [PermissionFlagsBits.AttachFiles, "Attach Files"],
+];
+
+function missingGuildDeliveryPermissions(interaction, publicRepliesInGuilds = config.publicRepliesInGuilds) {
+    if (!publicRepliesInGuilds || !interaction.inGuild()) return [];
+    if (!interaction.authorizingIntegrationOwners?.guildId) return [];
+
+    const required = [...PUBLIC_DELIVERY_PERMISSIONS];
+    if (interaction.channel?.isThread()) {
+        required.push([PermissionFlagsBits.SendMessagesInThreads, "Send Messages in Threads"]);
+    }
+
+    return required
+        .filter(([permission]) => !interaction.appPermissions.has(permission))
+        .map(([, label]) => label);
+}
+
+function requireGuildDeliveryPermissions(interaction) {
+    const missing = missingGuildDeliveryPermissions(interaction);
+    if (missing.length === 0) return;
+    throw userError(
+        `MediaFilez is missing Discord permissions in this channel: ${missing.join(", ")}. Ask a server administrator to update the bot role or use the command in a DM.`,
+        "MISSING_DISCORD_PERMISSIONS",
+    );
+}
 
 function uploadTargetBytesForInteraction(interaction, configuredTargetBytes = config.discordUploadTargetBytes) {
     return Math.min(
@@ -108,7 +137,9 @@ async function enqueue(interaction, reply, request) {
 }
 
 export async function handleMediaCommand(interaction) {
-    const deferOptions = config.publicRepliesInGuilds ? {} : { flags: MessageFlags.Ephemeral };
+    requireGuildDeliveryPermissions(interaction);
+    const privateReply = interaction.inGuild() && !config.publicRepliesInGuilds;
+    const deferOptions = privateReply ? { flags: MessageFlags.Ephemeral } : {};
     await interaction.deferReply(deferOptions);
     log.info(`/media from ${interaction.user.tag} context=${interaction.context ?? "unknown"}`);
 
@@ -128,4 +159,8 @@ export async function handleMediaCommand(interaction) {
     }
 }
 
-export { runMediaJob, uploadTargetBytesForInteraction };
+export {
+    missingGuildDeliveryPermissions,
+    runMediaJob,
+    uploadTargetBytesForInteraction,
+};
