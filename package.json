@@ -26,7 +26,7 @@
         "user-install"
     ],
     "author": "MediaFilez contributors",
-    "license": "MIT",
+    "license": "AGPL-3.0-only",
     "dependencies": {
         "discord.js": "^14.27.0",
         "dotenv": "^17.4.2",
