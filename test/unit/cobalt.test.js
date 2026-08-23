@@ -5,11 +5,13 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { config } from '../../src/config.js';
-import { downloadWithCobalt } from '../../src/download/engines/cobalt.js';
+import { downloadWithCobalt, resetCobaltEndpointHealth } from '../../src/download/engines/cobalt.js';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
 
 test('downloads a Cobalt tunnel from a configured private instance', async (t) => {
+  resetCobaltEndpointHealth();
+  t.after(resetCobaltEndpointHealth);
   const requests = [];
   const server = http.createServer((request, response) => {
     requests.push(`${request.method} ${request.url}`);
@@ -49,4 +51,60 @@ test('downloads a Cobalt tunnel from a configured private instance', async (t) =
   assert.equal(result.fileName, 'cobalt.png');
   assert.equal(result.metadata.title, 'Fixture');
   assert.deepEqual(requests, ['POST /', 'GET /media.png']);
+});
+
+test('cools down a failed Cobalt endpoint while another endpoint works', async (t) => {
+  resetCobaltEndpointHealth();
+  t.after(resetCobaltEndpointHealth);
+  let failedRequests = 0;
+  let workingRequests = 0;
+  const failed = http.createServer((request, response) => {
+    failedRequests += 1;
+    response.writeHead(503, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ status: 'error', error: { code: 'api.fetch.fail' } }));
+  });
+  const working = http.createServer((request, response) => {
+    workingRequests += 1;
+    if (request.method === 'POST') {
+      const base = `http://127.0.0.1:${working.address().port}`;
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ status: 'tunnel', url: `${base}/media.png`, filename: 'result.png' }));
+      return;
+    }
+    response.writeHead(200, { 'content-type': 'image/png', 'content-length': PNG.length });
+    response.end(PNG);
+  });
+  await Promise.all([
+    new Promise((resolve) => failed.listen(0, '127.0.0.1', resolve)),
+    new Promise((resolve) => working.listen(0, '127.0.0.1', resolve)),
+  ]);
+  t.after(() => Promise.all([
+    new Promise((resolve) => failed.close(resolve)),
+    new Promise((resolve) => working.close(resolve)),
+  ]));
+
+  const previousEndpoints = config.cobaltApiEndpoints;
+  const previousDirectory = config.cobaltDirectoryEnabled;
+  config.cobaltApiEndpoints = [
+    `http://127.0.0.1:${failed.address().port}`,
+    `http://127.0.0.1:${working.address().port}`,
+  ];
+  config.cobaltDirectoryEnabled = false;
+  t.after(() => {
+    config.cobaltApiEndpoints = previousEndpoints;
+    config.cobaltDirectoryEnabled = previousDirectory;
+  });
+
+  for (let index = 0; index < 2; index += 1) {
+    const attemptDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mediafilez-cobalt-'));
+    t.after(() => fs.rm(attemptDir, { recursive: true, force: true }));
+    const result = await downloadWithCobalt('https://example.com/post', attemptDir, {
+      outputType: 'image',
+      maxBytes: 1024 * 1024,
+    });
+    assert.equal(result.fileName, 'result.png');
+  }
+
+  assert.equal(failedRequests, 1);
+  assert.equal(workingRequests, 4);
 });

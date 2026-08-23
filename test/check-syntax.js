@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 const root = process.cwd();
-const scanRoots = ['src', 'test'];
+const scanRoots = ['src', 'test', 'scripts'];
 
 async function listJsFiles(dir) {
   const entries = await fs.readdir(dir, { withFileTypes: true });

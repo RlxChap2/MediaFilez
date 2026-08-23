@@ -6,6 +6,7 @@ import { DownloadMethodError, userError } from "../../utils/errors.js";
 import { ProcessExecutionError, runProcess } from "../../utils/process.js";
 import { recoverArtifact } from "../artifact.js";
 import { formatBytes } from "../../utils/format.js";
+import { resolveFFmpegPaths } from "../../utils/ffmpeg.js";
 
 export function resolveYtDlpPath() {
     if (config.ytdlpPath) return config.ytdlpPath;
@@ -79,6 +80,8 @@ export async function downloadWithYtDlp(rawUrl, attemptDir, options = {}) {
         "3",
         "--fragment-retries",
         "3",
+        "--extractor-retries",
+        "3",
         "--socket-timeout",
         "30",
         "--concurrent-fragments",
@@ -87,6 +90,8 @@ export async function downloadWithYtDlp(rawUrl, attemptDir, options = {}) {
         String(maxBytes),
         "--js-runtimes",
         `node:${process.execPath}`,
+        "--ffmpeg-location",
+        resolveFFmpegPaths().ffmpeg,
         "--write-info-json",
         "--no-clean-info-json",
         "--progress-template",
@@ -96,6 +101,7 @@ export async function downloadWithYtDlp(rawUrl, attemptDir, options = {}) {
         "--output",
         path.join(attemptDir, "%(title).120B_%(id).40B.%(ext)s"),
     ];
+    if (config.ytdlpImpersonate) args.push("--impersonate", config.ytdlpImpersonate);
     if (config.mediaCookiesFile) args.push("--cookies", config.mediaCookiesFile);
     else if (config.ytdlpCookiesFromBrowser) args.push("--cookies-from-browser", config.ytdlpCookiesFromBrowser);
 

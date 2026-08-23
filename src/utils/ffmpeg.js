@@ -2,6 +2,8 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
 import fs from "node:fs/promises";
+import ffmpegStaticPath from "ffmpeg-static";
+import ffprobeInstaller from "@ffprobe-installer/ffprobe";
 import { config } from "../config.js";
 import { formatBytes } from "./format.js";
 import { userError } from "./errors.js";
@@ -10,14 +12,22 @@ import { log } from "./logger.js";
 const execFileAsync = promisify(execFile);
 let ffmpegAvailability = null;
 
+export function resolveFFmpegPaths() {
+    return {
+        ffmpeg: config.ffmpegPath || ffmpegStaticPath || "ffmpeg",
+        ffprobe: config.ffprobePath || ffprobeInstaller.path || "ffprobe",
+    };
+}
+
 function missingFfmpegError(binary) {
     return userError(
         `${binary} is not installed on this host. Install FFmpeg so audio conversion, video thumbnails, image extraction, and video fitting can work.`,
         "FFMPEG_MISSING",
+        { stopFallback: true },
     );
 }
 
-async function runBinary(binary, args, options = {}) {
+async function runBinary(binary, label, args, options = {}) {
     const timeout = options.timeoutMs ?? config.ffmpegTimeoutMs;
     try {
         const { stdout, stderr } = await execFileAsync(binary, args, {
@@ -30,21 +40,24 @@ async function runBinary(binary, args, options = {}) {
     } catch (error) {
         if (error.name === "AbortError" || error.code === "ABORT_ERR") throw error;
         if (error.killed || error.signal === "SIGTERM") {
-            throw userError(`${binary} timed out while processing this file.`, "PROCESS_TIMEOUT");
+            throw userError(`${label} timed out while processing this file.`, "PROCESS_TIMEOUT");
         }
         if (error.code === "ENOENT") {
-            throw missingFfmpegError(binary);
+            throw missingFfmpegError(label);
         }
-        throw new Error(`${binary} failed: ${error.stderr || error.message}`);
+        throw new Error(`${label} failed: ${error.stderr || error.message}`);
     }
 }
 
 export async function runFFmpeg(args, options = {}) {
-    return await runBinary("ffmpeg", ["-hide_banner", ...args], options);
+    return await runBinary(resolveFFmpegPaths().ffmpeg, "FFmpeg", ["-hide_banner", ...args], options);
 }
 
 async function runFFprobe(args, options = {}) {
-    const { stdout } = await runBinary("ffprobe", ["-v", "quiet", ...args], { ...options, timeoutMs: 30_000 });
+    const { stdout } = await runBinary(resolveFFmpegPaths().ffprobe, "FFprobe", ["-v", "quiet", ...args], {
+        ...options,
+        timeoutMs: 30_000,
+    });
     return stdout;
 }
 
@@ -123,7 +136,7 @@ function videoBitratesForTarget(info, targetSizeBytes, scale = 0.9) {
 
     if (videoBitrate < 24_000) {
         throw userError(
-            `This video is too long to fit inside ${formatBytes(targetSizeBytes)} as a playable video. Audio or thumbnail output will fit more reliably.`,
+            `This video is too long to fit inside ${formatBytes(targetSizeBytes)} as a playable video. Audio or image output will fit more reliably.`,
             "FILE_TOO_LARGE",
         );
     }
@@ -239,6 +252,8 @@ async function compressAttempt(inputPath, outputPath, info, targetSizeBytes, sca
         "libx264",
         "-preset",
         "veryfast",
+        "-threads",
+        String(config.ffmpegThreads),
         "-b:v",
         `${videoKbps}k`,
         "-maxrate",
@@ -306,9 +321,10 @@ export async function checkFFmpeg() {
     if (ffmpegAvailability !== null) return ffmpegAvailability;
 
     try {
+        const binaries = resolveFFmpegPaths();
         await Promise.all([
-            execFileAsync("ffmpeg", ["-version"], { timeout: 5000, windowsHide: true }),
-            execFileAsync("ffprobe", ["-version"], { timeout: 5000, windowsHide: true }),
+            execFileAsync(binaries.ffmpeg, ["-version"], { timeout: 5000, windowsHide: true }),
+            execFileAsync(binaries.ffprobe, ["-version"], { timeout: 5000, windowsHide: true }),
         ]);
         ffmpegAvailability = true;
         return ffmpegAvailability;
@@ -321,7 +337,8 @@ export async function checkFFmpeg() {
 export async function requireFFmpeg(featureName) {
     if (await checkFFmpeg()) return;
     throw userError(
-        `FFmpeg is not installed on this host, so ${featureName} cannot run. On Ubuntu/Debian: apt update && apt install -y ffmpeg`,
+        `FFmpeg is unavailable, so ${featureName} cannot run. Reinstall dependencies or set FFMPEG_PATH and FFPROBE_PATH.`,
         "FFMPEG_MISSING",
+        { stopFallback: true },
     );
 }

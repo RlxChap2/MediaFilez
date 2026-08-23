@@ -4,6 +4,8 @@ import { assertPublicHttpUrl } from "../../utils/security.js";
 import { downloadDirectHttp } from "./directHttp.js";
 
 let directoryCache = { expiresAt: 0, endpoints: [] };
+const endpointCooldowns = new Map();
+let endpointCursor = 0;
 
 function uniqueEndpoints(values) {
     const result = new Set();
@@ -62,6 +64,9 @@ function headers() {
 
 function mediaFromResponse(data, outputType) {
     if (typeof data?.url === "string") return { url: data.url, fileName: data.filename };
+    if (outputType === "audio" && typeof data?.audio === "string") {
+        return { url: data.audio, fileName: data.audioFilename || data.filename };
+    }
     const picker = Array.isArray(data?.picker) ? data.picker : [];
 
     const preferred =
@@ -73,6 +78,23 @@ function mediaFromResponse(data, outputType) {
         }) || picker.find((item) => item?.url);
 
     return preferred ? { url: preferred.url, fileName: preferred.filename || data.filename } : null;
+}
+
+function availableEndpoints(endpoints) {
+    const now = Date.now();
+    const offset = endpointCursor % endpoints.length;
+    endpointCursor += 1;
+    const rotated = [...endpoints.slice(offset), ...endpoints.slice(0, offset)];
+    const available = rotated.filter((endpoint) => (endpointCooldowns.get(endpoint) ?? 0) <= now);
+    if (available.length > 0) return available;
+    return rotated.sort(
+        (left, right) => (endpointCooldowns.get(left) ?? 0) - (endpointCooldowns.get(right) ?? 0),
+    );
+}
+
+export function resetCobaltEndpointHealth() {
+    endpointCooldowns.clear();
+    endpointCursor = 0;
 }
 
 function cobaltMessage(data, status) {
@@ -142,11 +164,14 @@ export async function downloadWithCobalt(rawUrl, attemptDir, options = {}) {
     if (endpoints.length === 0) throw new DownloadMethodError("cobalt", "No Cobalt instance is configured.");
 
     const failures = [];
-    for (const endpoint of endpoints) {
+    for (const endpoint of availableEndpoints(endpoints)) {
         try {
-            return await callEndpoint(endpoint, rawUrl, attemptDir, options);
+            const result = await callEndpoint(endpoint, rawUrl, attemptDir, options);
+            endpointCooldowns.delete(endpoint);
+            return result;
         } catch (error) {
             if (error?.name === "AbortError" || error?.stopFallback) throw error;
+            endpointCooldowns.set(endpoint, Date.now() + config.cobaltFailureCooldownMs);
             failures.push(`${new URL(endpoint).hostname}: ${error.publicMessage || error.message}`);
         }
     }

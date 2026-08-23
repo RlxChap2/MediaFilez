@@ -1,2 +1,3 @@
 allowBuilds:
+  ffmpeg-static: true
   youtube-dl-exec: true

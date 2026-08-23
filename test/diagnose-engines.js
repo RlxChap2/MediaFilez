@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import { config } from '../src/config.js';
 import { planEngines } from '../src/download/planner.js';
 import { resolveYtDlpPath } from '../src/download/engines/ytDlp.js';
+import { resolveGalleryDlPath } from '../src/download/engines/galleryDl.js';
 
 const execFileAsync = promisify(execFile);
 const sampleUrl = process.argv.slice(2).find((value) => value !== '--') || 'https://www.youtube.com/watch?v=dQw4w9WgXcQ';
@@ -19,6 +20,6 @@ async function version(command) {
 console.log(`URL\t${sampleUrl}`);
 console.log(`PLAN\t${planEngines(sampleUrl, 'video').join(' -> ')}`);
 console.log(`yt-dlp\t${await version(resolveYtDlpPath())}`);
-console.log(`gallery-dl\t${config.galleryDlEnabled ? await version(config.galleryDlPath) : 'disabled'}`);
+console.log(`gallery-dl\t${config.galleryDlEnabled ? await version(resolveGalleryDlPath()) : 'disabled'}`);
 console.log(`Cobalt\t${config.cobaltApiEndpoints.length ? config.cobaltApiEndpoints.map((value) => new URL(value).host).join(', ') : 'disabled'}`);
 console.log(`cookies\t${config.mediaCookiesFile ? 'file configured' : config.ytdlpCookiesFromBrowser ? 'browser extraction configured' : 'anonymous'}`);

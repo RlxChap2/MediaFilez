@@ -3,6 +3,8 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { config } from "../src/config.js";
 import { resolveYtDlpPath } from "../src/download/engines/ytDlp.js";
+import { resolveGalleryDlPath } from "../src/download/engines/galleryDl.js";
+import { resolveFFmpegPaths } from "../src/utils/ffmpeg.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -67,14 +69,15 @@ function printResult(name, result, required = true) {
     return result.ok || !required;
 }
 
+const ffmpegPaths = resolveFFmpegPaths();
 const checks = [
     ["node", { ok: Number(process.versions.node.split(".")[0]) >= 22, detail: process.version }, true],
     ["BOT_TOKEN", { ok: Boolean(config.botToken), detail: config.botToken ? "configured" : "missing" }, true],
     ["CLIENT_ID", { ok: Boolean(config.clientId), detail: config.clientId ? "configured" : "missing" }, false],
-    ["ffmpeg", await commandOk("ffmpeg", ["-version"]), false],
-    ["ffprobe", await commandOk("ffprobe", ["-version"]), false],
+    ["ffmpeg", await commandOk(ffmpegPaths.ffmpeg, ["-version"]), false],
+    ["ffprobe", await commandOk(ffmpegPaths.ffprobe, ["-version"]), false],
     ["yt-dlp", await commandOk(resolveYtDlpPath()), true],
-    [ "gallery-dl", config.galleryDlEnabled ? await commandOk(config.galleryDlPath) : { ok: true, detail: "disabled" }, false ],
+    ["gallery-dl", config.galleryDlEnabled ? await commandOk(resolveGalleryDlPath()) : { ok: true, detail: "disabled" }, false],
     ["cookie source", await cookieFileOk(), false],
     ["Cobalt", await cobaltOk(), false],
     ["YouTube.js", { ok: config.youtubeJsEnabled, detail: config.youtubeJsEnabled ? "enabled" : "disabled" }, false],

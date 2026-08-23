@@ -53,7 +53,10 @@ function uploadTargetBytesForInteraction(interaction, configuredTargetBytes = co
 function acquireUserSlot(userId) {
     const active = activeByUser.get(userId) ?? 0;
     if (active >= config.maxConcurrentJobsPerUser) {
-        throw userError("You already have a media job running. Wait for it to finish.", "USER_BUSY");
+        throw userError(
+            `You already have ${active} media job${active === 1 ? "" : "s"} running or queued. Wait for one to finish.`,
+            "USER_BUSY",
+        );
     }
     activeByUser.set(userId, active + 1);
 }

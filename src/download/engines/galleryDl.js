@@ -1,9 +1,19 @@
 import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { config } from '../../config.js';
 import { DownloadMethodError } from '../../utils/errors.js';
 import { ProcessExecutionError, runProcess } from '../../utils/process.js';
 import { recoverArtifact } from '../artifact.js';
+
+export function resolveGalleryDlPath() {
+  if (config.galleryDlPath) return config.galleryDlPath;
+  const projectRoot = fileURLToPath(new URL('../../../', import.meta.url));
+  const bundledName = process.platform === 'win32' ? 'gallery-dl.exe' : 'gallery-dl';
+  const bundledPath = path.join(projectRoot, '.tools', bundledName);
+  return fsSync.existsSync(bundledPath) ? bundledPath : 'gallery-dl';
+}
 
 async function readMetadata(attemptDir) {
   const entries = await fs.readdir(attemptDir, { recursive: true }).catch(() => []);
@@ -24,7 +34,9 @@ async function readMetadata(attemptDir) {
 }
 
 function processMessage(error) {
-  if (error?.cause?.code === 'ENOENT') return 'gallery-dl is not installed. Set GALLERY_DL_PATH or disable this engine.';
+  if (error?.cause?.code === 'ENOENT') {
+    return 'gallery-dl is unavailable. Run pnpm run tools:install, set GALLERY_DL_PATH, or use Docker.';
+  }
   const lines = `${error?.stderr || ''}\n${error?.stdout || ''}`.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   return lines.findLast((line) => /error|failed|unsupported/i.test(line)) || lines.at(-1) || error.message;
 }
@@ -39,7 +51,7 @@ export async function downloadWithGalleryDl(rawUrl, attemptDir, options = {}) {
 
   let processError = null;
   try {
-    await runProcess(config.galleryDlPath, args, {
+    await runProcess(resolveGalleryDlPath(), args, {
       timeoutMs: config.ytdlpTimeoutMs,
       signal: options.signal,
     });

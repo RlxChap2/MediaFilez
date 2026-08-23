@@ -1,62 +1,89 @@
 # MediaFilez
 
-MediaFilez is a Discord media downloader built around one rule: a fallback may start only after the previous attempt has stopped and left no valid file behind.
+MediaFilez downloads public media into Discord through one `/media` command. It tries ordered engines, validates every result, fits oversized video to the current interaction limit, and uploads one confirmed attachment.
 
-The `/media` command accepts a page or direct-media URL and returns video, audio, an image, or a thumbnail. Each download runs in an isolated attempt directory. MediaFilez validates the result with file signatures and FFprobe, moves one accepted artifact into a completed directory, then uploads it once.
+The command has three output choices:
 
-## Engines
+- **Video** downloads playable video.
+- **Image / video frame** returns a source image, page thumbnail, or a frame from video.
+- **Audio** downloads or extracts audio.
 
-The engine order depends on the URL and requested output.
+`Thumbnail` no longer appears as a separate choice. Old interactions using its stored value remain valid while Discord propagates the updated command.
 
-| Source | Typical order |
+## What changed in 2.1
+
+- Local installs include FFmpeg and FFprobe packages. `pnpm install` also fetches a SHA-256 verified gallery-dl build into `.tools` when no operator path is supplied.
+- Instagram has a direct embed-proxy fallback. The default converts `instagram.com` to `kkkinstagram.com`, then downloads the returned media through the same redirect, SSRF, size, and signature checks as any other URL.
+- Unknown pages gain a metadata extractor for Open Graph, Twitter card, and HTML media tags.
+- Multiple Cobalt endpoints rotate across jobs. A failed endpoint enters a short cooldown so every queued job does not wait on the same dead host.
+- The queue accepts four jobs by default and two jobs per user. Both values remain configurable.
+- Discord's `attachmentSizeLimit` is now the normal upload target. The old 7 MiB ceiling is gone.
+
+## Download pipeline
+
+Engine order depends on the host and requested output.
+
+| Source | Default order |
 | --- | --- |
-| Direct media URL | direct HTTP → yt-dlp |
-| YouTube | yt-dlp → YouTube.js → Cobalt |
-| Instagram/Pinterest image | gallery-dl → Cobalt → yt-dlp |
-| Other supported social sites | Cobalt → yt-dlp → gallery-dl |
-| Unknown page | yt-dlp → gallery-dl → direct HTTP |
+| Direct media URL | direct HTTP, yt-dlp |
+| YouTube | yt-dlp, YouTube.js, Cobalt, page metadata |
+| Instagram video or audio | yt-dlp, Instagram proxy, Cobalt, gallery-dl, page metadata |
+| Instagram image | gallery-dl, yt-dlp, Instagram proxy, Cobalt, page metadata |
+| Pinterest, Flickr, Imgur | gallery-dl, yt-dlp, Cobalt, page metadata |
+| Other Cobalt services | Cobalt, yt-dlp, gallery-dl, page metadata |
+| Unknown page | yt-dlp, gallery-dl, page metadata, direct HTTP |
 
-- **yt-dlp** handles most video and audio sites. MediaFilez invokes its bundled executable directly and uses Node 22 as the YouTube JavaScript runtime.
-- **Cobalt** runs as a private v11 sidecar in the Compose stack. No community instance is enabled by default.
-- **YouTube.js** is the YouTube-specific fallback.
-- **gallery-dl** covers image posts and galleries. The Docker image installs it; local installs are optional.
-- **direct HTTP** streams obvious media URLs with redirect and size checks.
+Each engine writes into its own attempt directory. MediaFilez checks file signatures and FFprobe streams before committing a result. A fallback starts only after the prior attempt stops and leaves no valid file. A process error does not discard a complete file left behind.
 
-Metadata is best effort. yt-dlp info JSON, YouTube.js basic info, gallery-dl metadata, Cobalt metadata, and HTTP headers are normalized in memory. A metadata failure doesn't discard an otherwise valid download.
+The catch-all engines cover many sites, including Pinterest, but no downloader can guarantee every website. Sites change markup, expire media URLs, block data-center addresses, require fresh cookies, or remove extractor access. See the current [yt-dlp supported sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md) and [gallery-dl supported sites](https://github.com/mikf/gallery-dl/blob/master/docs/supportedsites.md).
 
 ## Requirements
 
 - Node.js 22 or newer
 - pnpm 11
-- FFmpeg and FFprobe for validation, conversion, thumbnails, and fitting video to Discord limits
-- gallery-dl only if you want that engine outside Docker
+- A Discord application token
 
-The `youtube-dl-exec` package supplies the official yt-dlp executable. MediaFilez doesn't use its process wrapper.
+Local users do not need to install FFmpeg, FFprobe, yt-dlp, or gallery-dl by hand. The package install supplies them. Run `pnpm run preflight` to see the exact binary version and path status.
 
-## Local setup
+Docker uses Debian FFmpeg and a pinned gallery-dl Python environment instead of the local `.tools` build.
+
+## Setup
 
 ```bash
 pnpm install
-copy .env.example .env
+```
+
+Copy `.env.example` to `.env`, then set `BOT_TOKEN` and `CLIENT_ID`.
+
+```bash
 pnpm run check
 pnpm run preflight
 pnpm run deploy
 pnpm start
 ```
 
-Set `BOT_TOKEN` and `CLIENT_ID` in `.env`. The bot registers one global, user-installable command. Discord can take time to propagate a global command update.
+Global command updates can take time to appear in every Discord client. `pnpm run deploy` must run after changing command choices. Deployment upserts `/media` without deleting Discord's Activity Entry Point or unrelated commands.
 
-Useful checks:
+Useful diagnostics:
 
 ```bash
-pnpm run diagnose:engines
+pnpm run diagnose:engines -- https://www.instagram.com/reels/DcV3RyRz0sq/
 pnpm run smoke:download
 pnpm run smoke:process
+pnpm run smoke:fit -- <public-video-url>
 ```
 
-## Docker and private Cobalt
+If the gallery-dl download was skipped or interrupted, run:
 
-The default Compose stack starts MediaFilez and Cobalt on an internal network. Cobalt isn't published on a host port.
+```bash
+pnpm run tools:install
+```
+
+Set `GALLERY_DL_AUTO_INSTALL=false` in the shell that runs `pnpm install` to skip the automatic tool download. `GALLERY_DL_PATH` can point to an operator-managed executable.
+
+## Docker and Cobalt
+
+The Compose stack starts MediaFilez and a private Cobalt v11 API on an internal network.
 
 ```bash
 docker compose up -d --build
@@ -64,84 +91,92 @@ docker compose logs -f --tail=100
 docker compose run --rm mediafilez pnpm run preflight
 ```
 
-Cobalt is a separate AGPL-licensed service. MediaFilez calls its HTTP API and doesn't copy Cobalt source into this repository.
+Cobalt's maintainers state that hosted instances are not intended for unrelated projects without permission. Self-hosting is the safe default. The included Compose service follows the project's [instance documentation](https://github.com/imputnet/cobalt/blob/main/docs/run-an-instance.md).
 
-## Authentication and cookies
+Add more operator-owned endpoints as a comma-separated list:
 
-Some Reddit, Instagram, YouTube, and other posts require a logged-in session. Export a fresh Netscape-format cookie file and set:
+```env
+COBALT_API_ENDPOINTS=https://cobalt-a.example,https://cobalt-b.example
+COBALT_MAX_ENDPOINTS=5
+COBALT_FAILURE_COOLDOWN_MS=60000
+```
+
+MediaFilez rotates available endpoints, falls through failures, and cools down dead hosts. `COBALT_DIRECTORY_ENABLED` remains off because directory entries are third-party services with separate privacy, availability, and authorization rules. The request and response format follows the [Cobalt API documentation](https://github.com/imputnet/cobalt/blob/main/docs/api.md).
+
+## Cookies and restricted posts
+
+Some public posts still require an authenticated browser session. Export a fresh Netscape-format cookie file and set:
 
 ```env
 MEDIA_COOKIES_FILE=C:\path\to\cookies.txt
 ```
 
-That file is shared by yt-dlp and gallery-dl. On a server, mount it read-only. Don't commit it.
+yt-dlp and gallery-dl share this file. Mount it read-only on a server and never commit it.
 
 ```yaml
-# compose.override.yaml
 services:
   mediafilez:
     environment:
       MEDIA_COOKIES_FILE: /run/secrets/media-cookies.txt
     volumes:
       - ./secrets/media-cookies.txt:/run/secrets/media-cookies.txt:ro
-  cobalt:
-    environment:
-      COOKIE_PATH: /cookies.json
-    volumes:
-      - ./secrets/cobalt-cookies.json:/cookies.json:ro
 ```
 
-`YTDLP_COOKIES_FROM_BROWSER` remains available for local troubleshooting. It's a poor server default: Chrome may lock its cookie database, and Windows DPAPI decryption is tied to the user and browser context. A cookie file avoids both failure modes. Closing Chrome or using a Firefox profile may help when browser extraction is unavoidable.
+`YTDLP_COOKIES_FROM_BROWSER` is useful for local diagnosis. A cookie file works better on servers because browsers may lock their databases and Windows DPAPI ties decryption to a user session.
 
-Fresh cookies aren't a bypass for private or access-restricted media. The account still needs permission to view the post.
+MediaFilez does not bypass private-account permissions, paywalls, DRM, or removed content. Download only media you have permission to access and save.
 
-## Configuration
-
-The full list lives in `.env.example`. These settings control the download system:
+## Main configuration
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `MAX_DOWNLOAD_SIZE` | `500mb` | Internal ceiling, clamped to Discord's 500 MB hard limit |
-| `MAX_CONCURRENT_JOBS` | `2` | Jobs allowed to run at once |
-| `MAX_QUEUE_SIZE` | `50` | Waiting jobs before the bot refuses new work |
-| `MAX_CONCURRENT_JOBS_PER_USER` | `1` | Stops one user from occupying the worker pool |
-| `JOB_TIMEOUT_MS` | `840000` | Cancels the worker and child processes; it does not merely reject the queue promise |
-| `DISCORD_REST_TIMEOUT_MS` | `180000` | Maximum duration of one Discord request; sized for slow 10 MiB uploads |
-| `DISCORD_REST_RETRIES` | `0` | Disables opaque library retries; MediaFilez verifies the original response before retrying an upload |
-| `DISCORD_UPLOAD_TARGET_SIZE` | `7mb` | Safe processing target for routes that cut slow uploads before Discord's advertised size limit |
-| `DISCORD_UPLOAD_ATTEMPTS` | `3` | Verified upload attempts; another attempt starts only after Discord confirms no attachment exists |
-| `DISCORD_UPLOAD_RETRY_DELAY_MS` | `1500` | Initial delay between verified upload attempts |
-| `HTTP_RESPONSE_TIMEOUT_MS` | `45000` | Maximum wait for a media server to start its response |
-| `HTTP_IDLE_TIMEOUT_MS` | `60000` | Cancels a transfer only when no new bytes arrive during this interval |
-| `STATUS_UPDATE_INTERVAL_MS` | `2500` | Minimum interval between progress edits in the same phase |
-| `MEDIA_COOKIES_FILE` | empty | Shared Netscape cookie file |
-| `YTDLP_CONCURRENT_FRAGMENTS` | `4` | Parallel fragment count inside one yt-dlp attempt |
-| `GALLERY_DL_ENABLED` | `true` | Enables the optional gallery engine |
-| `YOUTUBE_JS_ENABLED` | `true` | Enables the YouTube-specific fallback |
-| `DISABLED_ENGINES` | empty | Comma-separated engine names to remove from plans |
-| `COBALT_API_ENDPOINTS` | empty | Comma-separated private Cobalt v11 instances |
-| `COBALT_DIRECTORY_ENABLED` | `false` | Opt-in discovery of third-party instances |
+| `MAX_DOWNLOAD_SIZE` | `500mb` | Maximum source artifact before processing |
+| `MAX_CONCURRENT_JOBS` | `4` | Jobs running at once |
+| `MAX_QUEUE_SIZE` | `50` | Waiting jobs before backpressure rejects work |
+| `MAX_CONCURRENT_JOBS_PER_USER` | `2` | Per-user running or queued job cap |
+| `DISCORD_UPLOAD_TARGET_SIZE` | `500mb` | Operator ceiling; the interaction limit can lower it |
+| `DISCORD_UPLOAD_ATTEMPTS` | `3` | Verified attachment upload attempts |
+| `JOB_TIMEOUT_MS` | `840000` | Whole-job timeout below Discord's token lifetime |
+| `YTDLP_CONCURRENT_FRAGMENTS` | `4` | Fragment transfers inside one yt-dlp attempt |
+| `YTDLP_IMPERSONATE` | `chrome` | yt-dlp request impersonation target; use `none` to disable |
+| `FFMPEG_THREADS` | `2` | Encoder threads per fitting job |
+| `GALLERY_DL_ENABLED` | `true` | Enables gallery and image extraction |
+| `PAGE_METADATA_ENABLED` | `true` | Enables generic page metadata extraction |
+| `PAGE_METADATA_MAX_SIZE` | `1mb` | Maximum HTML read by the metadata engine |
+| `INSTAGRAM_PROXY_HOSTS` | `www.kkkinstagram.com` | Ordered public Instagram relay hosts; use `none` to disable |
+| `COBALT_API_ENDPOINTS` | empty | Operator-authorized Cobalt instances |
+| `DISABLED_ENGINES` | empty | Engine names removed from every plan |
 
-Compose overrides `COBALT_API_ENDPOINTS` with `http://cobalt:9000`. For local non-Docker use, start your Cobalt instance and set its URL in `.env`.
+`.env.example` contains timeout, upload retry, path override, cookie, and Cobalt settings.
 
-## Delivery behavior
+## Discord limits
 
-The reply moves through queued, resolving, downloading, processing, uploading, then one terminal state. The successful attachment and its final text are sent in the same `editReply` call. There's no second edit for upload timing.
+Discord sends `attachment_size_limit` with each interaction. MediaFilez uses the smaller value between that limit, `DISCORD_UPLOAD_TARGET_SIZE`, and its 500 MiB hard ceiling. Discord documents this field as the effective per-attachment limit for the invoking user or guild: [Discord interaction and upload reference](https://docs.discord.com/developers/interactions/receiving-and-responding).
 
-If Discord rejects the request after accepting the bytes, MediaFilez fetches the original interaction response and checks the attachment name and size. A confirmed attachment counts as success. If Discord can't confirm either outcome, the response is left untouched and the log records an unknown delivery state.
+When `fit_to_limit` is enabled, MediaFilez keeps a video unchanged if it fits. Oversized video goes through remux, audio-only reduction, then H.264 fitting when needed. Files that cannot fit at usable settings return a measured size error.
 
-MediaFilez deliberately does not import `undici` directly. A current discord.js bug can make file sends time out when an application also imports undici; direct downloads use Node's built-in HTTP clients instead. See [discord.js issue #11525](https://github.com/discordjs/discord.js/issues/11525).
+Upload retries are verification-first. If Discord closes a connection, the bot fetches the original reply and checks its attachment before another upload starts. An unknown delivery state never clears a file that Discord may have accepted.
 
-## Limits
+## Project map
 
-No engine can promise every site. Platforms change extractors, require accounts, expire cookies, challenge data-center IPs, or limit media by region. MediaFilez reports an authentication action when the failures point to login or cookies; it doesn't disguise those cases as generic scraper failures.
+```text
+src/
+  commands/              Discord command schema
+  jobs/                  queue, limits, and job lifetime
+  download/              planning, validation, and engine ownership
+    engines/             one adapter per downloader or resolver
+  media/                 image, audio, and video preparation
+  platform/discord/      reply and upload state machine
+  utils/                 shared process, file, security, and format code
+test/
+  unit/                  deterministic behavior tests
+  smoke-*.js             live local proofs
+docs/architecture.md     invariants and ownership boundaries
+CONTRIBUTING.md          code and test rules
+```
 
-Discord supplies `interaction.attachmentSizeLimit` for each command. MediaFilez uses the smaller of that value and `DISCORD_UPLOAD_TARGET_SIZE`. The conservative 7 MiB default leaves enough transfer-time margin on routes that close near-limit uploads after about a minute. Raise it only after confirming the host can upload larger files reliably. With `fit_to_limit` enabled, an oversized video can be transcoded when a usable result can fit; otherwise the bot reports the measured size and target.
-
-## Development
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the test commands and engine contract. The state and ownership rules are documented in [docs/architecture.md](docs/architecture.md).
+Keep new engines beside existing engines. Do not move validation, fallback ownership, or reply state into adapters. See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a change.
 
 ## License
 
-MediaFilez is available under the MIT License. See [LICENSE](LICENSE).
+MediaFilez is licensed under AGPL-3.0-only. See [LICENSE](LICENSE).

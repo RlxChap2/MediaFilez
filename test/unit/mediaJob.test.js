@@ -8,7 +8,7 @@ import {
 
 const MiB = 1024 * 1024;
 
-test('caps the processing target below Discord advertised limit', () => {
+test('keeps an operator ceiling below the Discord advertised limit', () => {
   const interaction = { attachmentSizeLimit: 10 * MiB };
   assert.equal(uploadTargetBytesForInteraction(interaction, 7 * MiB), 7 * MiB);
 });
@@ -16,6 +16,11 @@ test('caps the processing target below Discord advertised limit', () => {
 test('keeps a smaller interaction attachment limit', () => {
   const interaction = { attachmentSizeLimit: 5 * MiB };
   assert.equal(uploadTargetBytesForInteraction(interaction, 7 * MiB), 5 * MiB);
+});
+
+test('uses the Discord advertised limit when the operator ceiling is higher', () => {
+  const interaction = { attachmentSizeLimit: 100 * MiB };
+  assert.equal(uploadTargetBytesForInteraction(interaction, 500 * MiB), 100 * MiB);
 });
 
 function guildInteraction(permissions, { thread = false, guildInstall = true } = {}) {

@@ -11,6 +11,8 @@ import { downloadWithYtDlp } from "./engines/ytDlp.js";
 import { downloadWithCobalt } from "./engines/cobalt.js";
 import { downloadWithYouTubeJs } from "./engines/youtubeJs.js";
 import { downloadWithGalleryDl } from "./engines/galleryDl.js";
+import { downloadFromPageMetadata } from "./engines/pageMetadata.js";
+import { downloadWithInstagramProxy } from "./engines/instagramProxy.js";
 
 const DEFAULT_ENGINES = new Map([
     ["direct-http", downloadDirectHttp],
@@ -18,6 +20,8 @@ const DEFAULT_ENGINES = new Map([
     ["cobalt", downloadWithCobalt],
     ["youtube-js", downloadWithYouTubeJs],
     ["gallery-dl", downloadWithGalleryDl],
+    ["page-metadata", downloadFromPageMetadata],
+    ["instagram-proxy", downloadWithInstagramProxy],
 ]);
 
 function abortError() {
@@ -28,8 +32,18 @@ function abortError() {
     );
 }
 
-function publicFailure(attempts) {
+function publicFailure(attempts, outputType) {
     const messages = attempts.map((attempt) => attempt.error).join(" ");
+    const engines = [...new Set(attempts.map((attempt) => attempt.engine))].join(", ");
+    if (attempts.length === 0) {
+        return "No download engine is enabled for this URL. Check DISABLED_ENGINES and engine configuration.";
+    }
+    if (/FFmpeg|FFprobe/i.test(messages) && /not installed|unavailable|ENOENT/i.test(messages)) {
+        return "FFmpeg or FFprobe is unavailable. Reinstall dependencies or configure FFMPEG_PATH and FFPROBE_PATH.";
+    }
+    if (/gallery-dl is unavailable/i.test(messages) && attempts.length === 1) {
+        return "gallery-dl is unavailable. Run pnpm run tools:install, set GALLERY_DL_PATH, or use Docker.";
+    }
     if (/account authentication|cookies|login required|empty media response/i.test(messages)) {
         return "This post needs an authenticated session. Export fresh browser cookies to MEDIA_COOKIES_FILE, then try again.";
     }
@@ -39,7 +53,10 @@ function publicFailure(attempts) {
     if (/unsupported url|no suitable extractor/i.test(messages)) {
         return "This site or URL is not supported by the enabled download engines.";
     }
-    return "No enabled engine could produce a valid media file from this URL.";
+    if (/rate.?limit|too many requests|HTTP 429/i.test(messages)) {
+        return "The source or a configured download service is rate-limiting requests. Try again later.";
+    }
+    return `No playable ${outputType} came back after trying: ${engines}. The post may be unavailable, expired, or unsupported.`;
 }
 
 export async function downloadMedia(rawUrl, jobDir, options = {}) {
@@ -110,7 +127,7 @@ export async function downloadMedia(rawUrl, jobDir, options = {}) {
         }
     }
 
-    const error = userError(publicFailure(attempts), "DOWNLOAD_FAILED");
+    const error = userError(publicFailure(attempts, outputType), "DOWNLOAD_FAILED");
     error.attempts = attempts;
     throw error;
 }

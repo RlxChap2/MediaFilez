@@ -1,7 +1,7 @@
 import { DISCORD_HARD_MAX_BYTES, MB } from '../config.js';
 
 export const FILE_LIMITS = {
-  DEFAULT_UPLOAD: 25 * MB,
+  DEFAULT_UPLOAD: 10 * MB,
   MAX_DOWNLOAD: DISCORD_HARD_MAX_BYTES,
 };
 

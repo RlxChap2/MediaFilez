@@ -41,6 +41,8 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+        env:
+          GALLERY_DL_AUTO_INSTALL: "false"
 
       - name: Run checks
         run: pnpm run check

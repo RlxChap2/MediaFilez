@@ -2,7 +2,7 @@ import { ApplicationIntegrationType, InteractionContextType, SlashCommandBuilder
 
 export const data = new SlashCommandBuilder()
     .setName("media")
-    .setDescription("Download video, image, thumbnail, or audio from a public URL")
+    .setDescription("Download video, image, or audio from a public URL")
     .setIntegrationTypes([ApplicationIntegrationType.GuildInstall, ApplicationIntegrationType.UserInstall])
     .setContexts([InteractionContextType.Guild, InteractionContextType.BotDM, InteractionContextType.PrivateChannel])
     .addStringOption((option) =>
@@ -15,8 +15,7 @@ export const data = new SlashCommandBuilder()
             .setRequired(true)
             .addChoices(
                 { name: "Video", value: "video" },
-                { name: "Image", value: "image" },
-                { name: "Thumbnail", value: "thumbnail" },
+                { name: "Image / video frame", value: "image" },
                 { name: "Audio", value: "audio" },
             ),
     )

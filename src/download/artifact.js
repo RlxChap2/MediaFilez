@@ -51,8 +51,8 @@ export async function validateArtifact(candidate, options = {}) {
   }
 
   const mediaKind = mediaInfo?.hasVideo ? 'video' : mediaInfo?.hasAudio ? 'audio' : file.mediaKind;
-  if (['image', 'thumbnail'].includes(options.outputType) && mediaKind !== 'image') {
-    throw new Error('The artifact is not an image.');
+  if (['image', 'thumbnail'].includes(options.outputType) && !['image', 'video'].includes(mediaKind)) {
+    throw new Error('The artifact cannot produce an image.');
   }
   if (mediaKind === 'unknown') throw new Error('The artifact is not a recognized media file.');
 

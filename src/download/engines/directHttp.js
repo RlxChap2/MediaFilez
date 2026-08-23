@@ -93,6 +93,8 @@ function requestMedia(url, options) {
                     "user-agent": config.userAgent,
                     accept: "video/*,image/*,audio/*,*/*;q=0.8",
                     "accept-language": "en-US,en;q=0.8",
+                    ...(options.referer ? { referer: options.referer } : {}),
+                    ...options.headers,
                 },
             },
             resolve,
@@ -102,7 +104,7 @@ function requestMedia(url, options) {
     });
 }
 
-async function fetchMedia(rawUrl, options) {
+export async function openPublicHttpResponse(rawUrl, options = {}) {
     const trustedHosts = options.trustedHosts ?? [];
     let current = await assertPublicHttpUrl(rawUrl, { trustedHosts });
     const trusted = new Set(trustedHosts.map((host) => host.toLowerCase()));
@@ -111,6 +113,8 @@ async function fetchMedia(rawUrl, options) {
         const response = await requestMedia(current, {
             signal: options.signal,
             trustedHosts: trusted,
+            referer: options.referer,
+            headers: options.headers,
         });
         if (!REDIRECTS.has(response.statusCode)) return { response, finalUrl: current };
         response.destroy();
@@ -138,9 +142,10 @@ export async function downloadDirectHttp(rawUrl, attemptDir, options = {}) {
     let finalContentType;
 
     try {
-        const { response, finalUrl } = await fetchMedia(rawUrl, {
+        const { response, finalUrl } = await openPublicHttpResponse(rawUrl, {
             signal: transfer.signal,
             trustedHosts: options.trustedHosts,
+            referer: options.referer,
         });
         if ((response.statusCode ?? 0) < 200 || (response.statusCode ?? 0) >= 300) {
             response.destroy();
