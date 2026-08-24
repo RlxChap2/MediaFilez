@@ -1,6 +1,6 @@
 {
     "name": "mediafilez",
-    "version": "2.1.0",
+    "version": "2.1.1",
     "description": "Multi-engine Discord media downloader with verified fallbacks and upload fitting",
     "packageManager": "pnpm@11.9.0",
     "main": "src/index.js",
