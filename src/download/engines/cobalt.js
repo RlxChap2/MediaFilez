@@ -1,10 +1,13 @@
+import http from "node:http";
+import https from "node:https";
 import { config } from "../../config.js";
 import { DownloadMethodError } from "../../utils/errors.js";
-import { assertPublicHttpUrl } from "../../utils/security.js";
+import { assertPublicHttpUrl, publicDnsLookup } from "../../utils/security.js";
 import { downloadDirectHttp } from "./directHttp.js";
 
 let directoryCache = { expiresAt: 0, data: null };
 const endpointCooldowns = new Map();
+const MAX_COBALT_JSON_BYTES = 1024 * 1024;
 
 const DIRECTORY_SERVICE_HOSTS = [
     ["youtube", ["youtube.com", "youtu.be"]],
@@ -121,8 +124,11 @@ async function directoryEndpoints(signal, rawUrl) {
             headers: { accept: "application/json", "user-agent": config.userAgent },
         });
 
-        if (!response.ok) return [];
-        const data = await response.json();
+        if (!response.ok) {
+            await closeResponse(response);
+            return [];
+        }
+        const data = await readBoundedJsonResponse(response, MAX_COBALT_JSON_BYTES, "cobalt-directory");
         directoryCache = { expiresAt: Date.now() + 30 * 60_000, data };
 
         return selectCobaltDirectoryEndpoints(data, rawUrl);
@@ -145,10 +151,69 @@ function payload(rawUrl, outputType) {
     };
 }
 
-function headers() {
+export function cobaltRequestHeaders(trustedEndpoint) {
     const result = { accept: "application/json", "content-type": "application/json", "user-agent": config.userAgent };
-    if (config.cobaltApiKey) result.authorization = `${config.cobaltAuthScheme} ${config.cobaltApiKey}`;
+    if (trustedEndpoint && config.cobaltApiKey) {
+        result.authorization = `${config.cobaltAuthScheme} ${config.cobaltApiKey}`;
+    }
     return result;
+}
+
+function responseHeader(response, name) {
+    if (typeof response.headers?.get === "function") return response.headers.get(name);
+    const value = response.headers?.[name.toLowerCase()];
+    return Array.isArray(value) ? value[0] : value ?? null;
+}
+
+async function closeResponse(response) {
+    if (typeof response.destroy === "function") {
+        response.destroy();
+        return;
+    }
+    await response.body?.cancel().catch(() => {});
+}
+
+export async function readBoundedJsonResponse(response, maxBytes, method) {
+    const declaredSize = Number.parseInt(responseHeader(response, "content-length") || "0", 10);
+    if (declaredSize > maxBytes) {
+        await closeResponse(response);
+        throw new DownloadMethodError(method, `The response exceeded ${maxBytes} bytes.`);
+    }
+
+    const chunks = [];
+    let size = 0;
+    const body = response.body ?? response;
+    if (!body) throw new DownloadMethodError(method, "The response had no body.");
+    for await (const chunk of body) {
+        size += chunk.byteLength;
+        if (size > maxBytes) {
+            await closeResponse(response);
+            throw new DownloadMethodError(method, `The response exceeded ${maxBytes} bytes.`);
+        }
+        chunks.push(Buffer.from(chunk));
+    }
+    return JSON.parse(Buffer.concat(chunks, size).toString("utf8"));
+}
+
+function requestCobaltEndpoint(endpointUrl, requestBody, signal, trustedEndpoint) {
+    const transport = endpointUrl.protocol === "https:" ? https : http;
+    return new Promise((resolve, reject) => {
+        const request = transport.request(
+            endpointUrl,
+            {
+                method: "POST",
+                signal,
+                lookup: trustedEndpoint ? undefined : publicDnsLookup,
+                headers: {
+                    ...cobaltRequestHeaders(trustedEndpoint),
+                    "content-length": Buffer.byteLength(requestBody),
+                },
+            },
+            resolve,
+        );
+        request.once("error", reject);
+        request.end(requestBody);
+    });
 }
 
 function mediaFromResponse(data, outputType) {
@@ -201,24 +266,27 @@ async function callEndpoint(endpoint, rawUrl, attemptDir, options, trustedEndpoi
     const signal = options.signal
         ? AbortSignal.any([options.signal, AbortSignal.timeout(config.cobaltEndpointTimeoutMs)])
         : AbortSignal.timeout(config.cobaltEndpointTimeoutMs);
-    const response = await fetch(endpointUrl, {
-        method: "POST",
+    const response = await requestCobaltEndpoint(
+        endpointUrl,
+        JSON.stringify(payload(rawUrl, options.outputType)),
         signal,
-        headers: headers(),
-        body: JSON.stringify(payload(rawUrl, options.outputType)),
-    });
-
-    const text = await response.text();
+        trustedEndpoint,
+    );
+    const status = response.statusCode ?? 0;
     let data;
 
     try {
-        data = JSON.parse(text);
-    } catch {
-        throw new DownloadMethodError("cobalt", `Cobalt returned non-JSON HTTP ${response.status}.`);
+        data = await readBoundedJsonResponse(response, MAX_COBALT_JSON_BYTES, "cobalt");
+    } catch (error) {
+        if (error instanceof SyntaxError) {
+            throw new DownloadMethodError("cobalt", `Cobalt returned non-JSON HTTP ${status}.`);
+        }
+        throw error;
     }
 
-    if (!response.ok || data?.status === "error")
-        throw new DownloadMethodError("cobalt", cobaltMessage(data, response.status));
+    if (status < 200 || status >= 300 || data?.status === "error") {
+        throw new DownloadMethodError("cobalt", cobaltMessage(data, status));
+    }
 
     if (data?.status === "local-processing")
         throw new DownloadMethodError("cobalt", "This Cobalt response requires local processing, which was disabled.");

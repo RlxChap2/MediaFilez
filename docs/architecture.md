@@ -61,7 +61,7 @@ The Reddit adapter resolves short links through guarded redirects, derives the m
 
 Cobalt rotates the starting endpoint across jobs, then falls through the remaining configured endpoints. A failed endpoint receives a local cooldown. Later jobs skip that endpoint while another configured endpoint is available. If every endpoint is cooling down, the earliest retry is attempted so the engine can recover without a restart.
 
-The directory source is disabled by default. Hosted instances can impose authentication and access policies that MediaFilez cannot infer.
+The directory source is disabled by default. Hosted instances can impose authentication and access policies that MediaFilez cannot infer. Directory endpoints never receive the configured API key, are checked again for public DNS addresses when their socket opens, and cannot return unbounded JSON bodies.
 
 ## Delivery ownership
 

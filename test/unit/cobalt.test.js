@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import dns from 'node:dns';
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import os from 'node:os';
@@ -6,7 +7,9 @@ import path from 'node:path';
 import test from 'node:test';
 import { config } from '../../src/config.js';
 import {
+  cobaltRequestHeaders,
   downloadWithCobalt,
+  readBoundedJsonResponse,
   resetCobaltEndpointHealth,
   selectCobaltDirectoryEndpoints,
 } from '../../src/download/engines/cobalt.js';
@@ -48,6 +51,36 @@ test('ignores protected, offline, and failing instances in detailed directory da
   );
 });
 
+test('sends the Cobalt API key only to operator-configured endpoints', (t) => {
+  const previousKey = config.cobaltApiKey;
+  const previousScheme = config.cobaltAuthScheme;
+  config.cobaltApiKey = 'operator-secret';
+  config.cobaltAuthScheme = 'Api-Key';
+  t.after(() => {
+    config.cobaltApiKey = previousKey;
+    config.cobaltAuthScheme = previousScheme;
+  });
+
+  assert.equal(cobaltRequestHeaders(true).authorization, 'Api-Key operator-secret');
+  assert.equal(cobaltRequestHeaders(false).authorization, undefined);
+});
+
+test('rejects declared and streamed oversized Cobalt JSON', async () => {
+  await assert.rejects(
+    readBoundedJsonResponse(
+      new Response('{}', { headers: { 'content-length': '1025' } }),
+      1024,
+      'cobalt',
+    ),
+    /exceeded 1024 bytes/,
+  );
+
+  await assert.rejects(
+    readBoundedJsonResponse(new Response(Buffer.alloc(1025)), 1024, 'cobalt'),
+    /exceeded 1024 bytes/,
+  );
+});
+
 test('does not trust private endpoints supplied by the Cobalt directory', async (t) => {
   resetCobaltEndpointHealth();
   t.after(resetCobaltEndpointHealth);
@@ -85,6 +118,65 @@ test('does not trust private endpoints supplied by the Cobalt directory', async 
       maxBytes: 1024 * 1024,
     }),
     /non-public endpoint/,
+  );
+  assert.equal(processingRequests, 0);
+});
+
+test('rechecks directory endpoint DNS when opening the socket', async (t) => {
+  resetCobaltEndpointHealth();
+  t.after(resetCobaltEndpointHealth);
+  let processingRequests = 0;
+  const server = http.createServer((request, response) => {
+    if (request.url === '/directory') {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({
+        data: { Instagram: [`http://rebind.example:${server.address().port}/process`] },
+      }));
+      return;
+    }
+    processingRequests += 1;
+    response.writeHead(500).end();
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const originalLookup = dns.lookup;
+  const originalPromiseLookup = dns.promises.lookup;
+  dns.promises.lookup = async (hostname, options) => hostname === 'rebind.example'
+    ? [{ address: '93.184.216.34', family: 4 }]
+    : await originalPromiseLookup(hostname, options);
+  dns.lookup = (hostname, options, callback) => {
+    if (hostname === 'rebind.example') {
+      callback(null, [{ address: '127.0.0.1', family: 4 }]);
+      return;
+    }
+    originalLookup(hostname, options, callback);
+  };
+  t.after(() => {
+    dns.lookup = originalLookup;
+    dns.promises.lookup = originalPromiseLookup;
+  });
+
+  const previousEndpoints = config.cobaltApiEndpoints;
+  const previousDirectory = config.cobaltDirectoryEnabled;
+  const previousDirectoryUrl = config.cobaltDirectoryUrl;
+  config.cobaltApiEndpoints = [];
+  config.cobaltDirectoryEnabled = true;
+  config.cobaltDirectoryUrl = `http://127.0.0.1:${server.address().port}/directory`;
+  t.after(() => {
+    config.cobaltApiEndpoints = previousEndpoints;
+    config.cobaltDirectoryEnabled = previousDirectory;
+    config.cobaltDirectoryUrl = previousDirectoryUrl;
+  });
+
+  const attemptDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mediafilez-cobalt-'));
+  t.after(() => fs.rm(attemptDir, { recursive: true, force: true }));
+  await assert.rejects(
+    downloadWithCobalt('https://instagram.com/p/example/', attemptDir, {
+      outputType: 'image',
+      maxBytes: 1024 * 1024,
+    }),
+    /private or reserved address/,
   );
   assert.equal(processingRequests, 0);
 });

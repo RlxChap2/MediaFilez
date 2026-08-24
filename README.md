@@ -106,7 +106,7 @@ COBALT_MAX_ENDPOINTS=5
 COBALT_FAILURE_COOLDOWN_MS=60000
 ```
 
-MediaFilez tries configured endpoints in order, falls through failures, and cools down dead hosts. Directory results are filtered to the requested service and exclude Turnstile-protected instances. `COBALT_DIRECTORY_ENABLED` remains off because directory entries are third-party services with separate privacy, availability, and authorization rules. The request and response format follows the [Cobalt API documentation](https://github.com/imputnet/cobalt/blob/main/docs/api.md).
+MediaFilez tries configured endpoints in order, falls through failures, and cools down dead hosts. Directory results are filtered to the requested service and exclude Turnstile-protected instances. `COBALT_API_KEY` is sent only to operator-configured endpoints, never endpoints learned from the directory. Directory connections repeat the public-address check when opening the socket, and Cobalt JSON responses have a fixed size limit. `COBALT_DIRECTORY_ENABLED` remains off because directory entries are third-party services with separate privacy, availability, and authorization rules. The request and response format follows the [Cobalt API documentation](https://github.com/imputnet/cobalt/blob/main/docs/api.md).
 
 ## Cookies and restricted posts
 
