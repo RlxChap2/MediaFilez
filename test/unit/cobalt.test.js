@@ -5,9 +5,89 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { config } from '../../src/config.js';
-import { downloadWithCobalt, resetCobaltEndpointHealth } from '../../src/download/engines/cobalt.js';
+import {
+  downloadWithCobalt,
+  resetCobaltEndpointHealth,
+  selectCobaltDirectoryEndpoints,
+} from '../../src/download/engines/cobalt.js';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
+
+test('selects Cobalt directory endpoints that passed tests for the requested service', () => {
+  const response = {
+    data: {
+      Instagram: ['https://instagram-cobalt.example'],
+      Pinterest: ['https://pinterest-cobalt.example'],
+      'YouTube Shorts': ['https://youtube-cobalt.example'],
+    },
+  };
+
+  assert.deepEqual(
+    selectCobaltDirectoryEndpoints(response, 'https://www.instagram.com/reel/example/'),
+    ['https://instagram-cobalt.example'],
+  );
+  assert.deepEqual(
+    selectCobaltDirectoryEndpoints(response, 'https://youtu.be/example'),
+    ['https://youtube-cobalt.example'],
+  );
+});
+
+test('ignores protected, offline, and failing instances in detailed directory data', () => {
+  const response = {
+    data: [
+      { api: 'protected.example', turnstile: true, tests: { Instagram: { status: true } } },
+      { api: 'offline.example', online: false, tests: { Instagram: { status: true } } },
+      { api: 'failed.example', tests: { Instagram: { status: false } } },
+      { api: 'working.example', tests: { Instagram: { status: true } } },
+    ],
+  };
+
+  assert.deepEqual(
+    selectCobaltDirectoryEndpoints(response, 'https://instagram.com/p/example/'),
+    ['https://working.example'],
+  );
+});
+
+test('does not trust private endpoints supplied by the Cobalt directory', async (t) => {
+  resetCobaltEndpointHealth();
+  t.after(resetCobaltEndpointHealth);
+  let processingRequests = 0;
+  const server = http.createServer((request, response) => {
+    if (request.url === '/directory') {
+      const endpoint = `http://127.0.0.1:${server.address().port}/process`;
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ data: { Instagram: [endpoint] } }));
+      return;
+    }
+    processingRequests += 1;
+    response.writeHead(500).end();
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+
+  const previousEndpoints = config.cobaltApiEndpoints;
+  const previousDirectory = config.cobaltDirectoryEnabled;
+  const previousDirectoryUrl = config.cobaltDirectoryUrl;
+  config.cobaltApiEndpoints = [];
+  config.cobaltDirectoryEnabled = true;
+  config.cobaltDirectoryUrl = `http://127.0.0.1:${server.address().port}/directory`;
+  t.after(() => {
+    config.cobaltApiEndpoints = previousEndpoints;
+    config.cobaltDirectoryEnabled = previousDirectory;
+    config.cobaltDirectoryUrl = previousDirectoryUrl;
+  });
+
+  const attemptDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mediafilez-cobalt-'));
+  t.after(() => fs.rm(attemptDir, { recursive: true, force: true }));
+  await assert.rejects(
+    downloadWithCobalt('https://instagram.com/p/example/', attemptDir, {
+      outputType: 'image',
+      maxBytes: 1024 * 1024,
+    }),
+    /non-public endpoint/,
+  );
+  assert.equal(processingRequests, 0);
+});
 
 test('downloads a Cobalt tunnel from a configured private instance', async (t) => {
   resetCobaltEndpointHealth();
@@ -107,4 +187,60 @@ test('cools down a failed Cobalt endpoint while another endpoint works', async (
 
   assert.equal(failedRequests, 1);
   assert.equal(workingRequests, 4);
+});
+
+test('keeps a healthy primary Cobalt endpoint ahead of its fallback', async (t) => {
+  resetCobaltEndpointHealth();
+  t.after(resetCobaltEndpointHealth);
+  let primaryRequests = 0;
+  let fallbackRequests = 0;
+
+  function workingServer(increment) {
+    return http.createServer((request, response) => {
+      increment();
+      if (request.method === 'POST') {
+        const base = `http://127.0.0.1:${request.headers.host.split(':')[1]}`;
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ status: 'tunnel', url: `${base}/media.png`, filename: 'result.png' }));
+        return;
+      }
+      response.writeHead(200, { 'content-type': 'image/png', 'content-length': PNG.length });
+      response.end(PNG);
+    });
+  }
+
+  const primary = workingServer(() => { primaryRequests += 1; });
+  const fallback = workingServer(() => { fallbackRequests += 1; });
+  await Promise.all([
+    new Promise((resolve) => primary.listen(0, '127.0.0.1', resolve)),
+    new Promise((resolve) => fallback.listen(0, '127.0.0.1', resolve)),
+  ]);
+  t.after(() => Promise.all([
+    new Promise((resolve) => primary.close(resolve)),
+    new Promise((resolve) => fallback.close(resolve)),
+  ]));
+
+  const previousEndpoints = config.cobaltApiEndpoints;
+  const previousDirectory = config.cobaltDirectoryEnabled;
+  config.cobaltApiEndpoints = [
+    `http://127.0.0.1:${primary.address().port}`,
+    `http://127.0.0.1:${fallback.address().port}`,
+  ];
+  config.cobaltDirectoryEnabled = false;
+  t.after(() => {
+    config.cobaltApiEndpoints = previousEndpoints;
+    config.cobaltDirectoryEnabled = previousDirectory;
+  });
+
+  for (let index = 0; index < 2; index += 1) {
+    const attemptDir = await fs.mkdtemp(path.join(os.tmpdir(), 'mediafilez-cobalt-'));
+    t.after(() => fs.rm(attemptDir, { recursive: true, force: true }));
+    await downloadWithCobalt('https://example.com/post', attemptDir, {
+      outputType: 'image',
+      maxBytes: 1024 * 1024,
+    });
+  }
+
+  assert.equal(primaryRequests, 4);
+  assert.equal(fallbackRequests, 0);
 });

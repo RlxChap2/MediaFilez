@@ -92,7 +92,7 @@ export const config = {
     disabledEngines: new Set(parseList(process.env.DISABLED_ENGINES).map((item) => item.toLowerCase())),
     cobaltApiEndpoints: parseList(process.env.COBALT_API_ENDPOINTS),
     cobaltDirectoryEnabled: parseBoolean(process.env.COBALT_DIRECTORY_ENABLED, false),
-    cobaltDirectoryUrl: process.env.COBALT_DIRECTORY_URL || "https://cobalt.directory/api/working?type=api",
+    cobaltDirectoryUrl: process.env.COBALT_DIRECTORY_URL || "https://cobalt.directory/api/working?type=api&turnstile=0",
     cobaltEndpointTimeoutMs: parseInteger(process.env.COBALT_ENDPOINT_TIMEOUT_MS, 12_000, 3_000, 60_000),
     cobaltMaxEndpoints: parseInteger(process.env.COBALT_MAX_ENDPOINTS, 5, 1, 10),
     cobaltFailureCooldownMs: parseInteger(process.env.COBALT_FAILURE_COOLDOWN_MS, 60_000, 1_000, 10 * 60_000),

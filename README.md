@@ -83,7 +83,7 @@ Set `GALLERY_DL_AUTO_INSTALL=false` in the shell that runs `pnpm install` to ski
 
 ## Docker and Cobalt
 
-The Compose stack starts MediaFilez and a private Cobalt v11 API on an internal network.
+The Compose stack starts MediaFilez and two private Cobalt v11 APIs on an internal network.
 
 ```bash
 docker compose up -d --build
@@ -93,7 +93,7 @@ docker compose run --rm mediafilez pnpm run preflight
 
 Set `YTDLP_IMPERSONATE=chrome` on Docker hosts only after preflight confirms `chrome impersonation ready`. Leave it disabled for installations whose yt-dlp build does not include curl-cffi.
 
-Cobalt's maintainers state that hosted instances are not intended for unrelated projects without permission. Self-hosting is the safe default. The included Compose service follows the project's [instance documentation](https://github.com/imputnet/cobalt/blob/main/docs/run-an-instance.md).
+Cobalt's maintainers state that hosted instances are not intended for unrelated projects without permission. Self-hosting is the safe default. Compose starts the official `11.7.1` image first, then a digest-pinned [zImPatrick compatibility build](https://github.com/zImPatrick/cobalt/tree/56258ad6d1a71ca079a19340d17255e7576f7019) as a second local fallback. Both remain private to the Compose network.
 
 Add more operator-owned endpoints as a comma-separated list:
 
@@ -103,7 +103,7 @@ COBALT_MAX_ENDPOINTS=5
 COBALT_FAILURE_COOLDOWN_MS=60000
 ```
 
-MediaFilez rotates available endpoints, falls through failures, and cools down dead hosts. `COBALT_DIRECTORY_ENABLED` remains off because directory entries are third-party services with separate privacy, availability, and authorization rules. The request and response format follows the [Cobalt API documentation](https://github.com/imputnet/cobalt/blob/main/docs/api.md).
+MediaFilez tries configured endpoints in order, falls through failures, and cools down dead hosts. Directory results are filtered to the requested service and exclude Turnstile-protected instances. `COBALT_DIRECTORY_ENABLED` remains off because directory entries are third-party services with separate privacy, availability, and authorization rules. The request and response format follows the [Cobalt API documentation](https://github.com/imputnet/cobalt/blob/main/docs/api.md).
 
 ## Cookies and restricted posts
 
@@ -146,7 +146,8 @@ MediaFilez does not bypass private-account permissions, paywalls, DRM, or remove
 | `PAGE_METADATA_ENABLED` | `true` | Enables generic page metadata extraction |
 | `PAGE_METADATA_MAX_SIZE` | `1mb` | Maximum HTML read by the metadata engine |
 | `INSTAGRAM_PROXY_HOSTS` | `www.kkkinstagram.com` | Ordered public Instagram relay hosts; use `none` to disable |
-| `COBALT_API_ENDPOINTS` | empty | Operator-authorized Cobalt instances |
+| `COBALT_API_ENDPOINTS` | empty | Operator-authorized instances; Compose supplies its two internal Cobalt endpoints |
+| `COBALT_DIRECTORY_ENABLED` | `false` | Opt in to tested, Turnstile-free third-party instances from cobalt.directory |
 | `DISABLED_ENGINES` | empty | Engine names removed from every plan |
 
 `.env.example` contains timeout, upload retry, path override, cookie, and Cobalt settings.
