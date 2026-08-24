@@ -25,3 +25,27 @@ test("keeps image metadata separate from video candidates", () => {
     const metadata = extractPageMetadata(html, new URL("https://example.com/post"), "image");
     assert.deepEqual(metadata.candidates, ["https://cdn.example/post.jpg"]);
 });
+
+test("unwraps encoded media URLs from share-link query parameters", () => {
+    const baseUrl = new URL(
+        "https://www.reddit.com/media?url=https%3A%2F%2Fi.redd.it%2F6q518hjjrajh1.png",
+    );
+    const metadata = extractPageMetadata("<html></html>", baseUrl, "image");
+
+    assert.deepEqual(metadata.candidates, ["https://i.redd.it/6q518hjjrajh1.png"]);
+});
+
+test("extracts media content URLs from JSON-LD", () => {
+    const html = `
+        <script type="application/ld+json">
+            {
+                "@type": "VideoObject",
+                "name": "Example clip",
+                "contentUrl": "https://cdn.example.net/assets/clip.mp4"
+            }
+        </script>
+    `;
+    const metadata = extractPageMetadata(html, new URL("https://small.example/post/1"), "video");
+
+    assert.deepEqual(metadata.candidates, ["https://cdn.example.net/assets/clip.mp4"]);
+});

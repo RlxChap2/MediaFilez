@@ -15,6 +15,7 @@ The command has three output choices:
 - Local installs include FFmpeg and FFprobe packages. `pnpm install` also fetches a SHA-256 verified gallery-dl build into `.tools` when no operator path is supplied.
 - Instagram has a direct embed-proxy fallback. The default converts `instagram.com` to `kkkinstagram.com`, then downloads the returned media through the same redirect, SSRF, size, and signature checks as any other URL.
 - Unknown pages gain a metadata extractor for Open Graph, Twitter card, and HTML media tags.
+- Share-link wrappers and JSON-LD `contentUrl` fields feed the guarded direct downloader. Reddit image posts also have a first-party embed fallback for cases where its normal page or JSON API blocks server addresses.
 - Multiple Cobalt endpoints rotate across jobs. A failed endpoint enters a short cooldown so every queued job does not wait on the same dead host.
 - The queue accepts four jobs by default and two jobs per user. Both values remain configurable.
 - Discord's `attachmentSizeLimit` is now the normal upload target. The old 7 MiB ceiling is gone.
@@ -30,6 +31,8 @@ Engine order depends on the host and requested output.
 | Instagram video or audio | yt-dlp, Instagram proxy, Cobalt, gallery-dl, page metadata |
 | Instagram image | gallery-dl, yt-dlp, Instagram proxy, Cobalt, page metadata |
 | Pinterest, Flickr, Imgur | gallery-dl, yt-dlp, Cobalt, page metadata |
+| Reddit image | Reddit embed, gallery-dl, yt-dlp, Cobalt, page metadata |
+| Reddit video or audio | Cobalt, yt-dlp, Reddit embed, gallery-dl, page metadata |
 | Other Cobalt services | Cobalt, yt-dlp, gallery-dl, page metadata |
 | Unknown page | yt-dlp, gallery-dl, page metadata, direct HTTP |
 
@@ -45,7 +48,7 @@ The catch-all engines cover many sites, including Pinterest, but no downloader c
 
 Local users do not need to install FFmpeg, FFprobe, yt-dlp, or gallery-dl by hand. The package install supplies them. Run `pnpm run preflight` to see the exact binary version and path status.
 
-Docker uses Debian FFmpeg and a pinned gallery-dl Python environment instead of the local `.tools` build.
+Docker uses Debian FFmpeg plus pinned Python builds of gallery-dl and yt-dlp. Its yt-dlp installation includes curl-cffi for optional browser impersonation.
 
 ## Setup
 
@@ -83,7 +86,7 @@ Set `GALLERY_DL_AUTO_INSTALL=false` in the shell that runs `pnpm install` to ski
 
 ## Docker and Cobalt
 
-The Compose stack starts MediaFilez and a private Cobalt v11 API on an internal network.
+The Compose stack starts MediaFilez and two private Cobalt v11 APIs on an internal network.
 
 ```bash
 docker compose up -d --build
@@ -91,7 +94,9 @@ docker compose logs -f --tail=100
 docker compose run --rm mediafilez pnpm run preflight
 ```
 
-Cobalt's maintainers state that hosted instances are not intended for unrelated projects without permission. Self-hosting is the safe default. The included Compose service follows the project's [instance documentation](https://github.com/imputnet/cobalt/blob/main/docs/run-an-instance.md).
+Set `YTDLP_IMPERSONATE=chrome` on Docker hosts only after preflight confirms `chrome impersonation ready`. Leave it disabled for installations whose yt-dlp build does not include curl-cffi.
+
+Cobalt's maintainers state that hosted instances are not intended for unrelated projects without permission. Self-hosting is the safe default. Compose starts the official `11.7.1` image first, then a digest-pinned [zImPatrick compatibility build](https://github.com/zImPatrick/cobalt/tree/56258ad6d1a71ca079a19340d17255e7576f7019) as a second local fallback. Both remain private to the Compose network.
 
 Add more operator-owned endpoints as a comma-separated list:
 
@@ -101,7 +106,7 @@ COBALT_MAX_ENDPOINTS=5
 COBALT_FAILURE_COOLDOWN_MS=60000
 ```
 
-MediaFilez rotates available endpoints, falls through failures, and cools down dead hosts. `COBALT_DIRECTORY_ENABLED` remains off because directory entries are third-party services with separate privacy, availability, and authorization rules. The request and response format follows the [Cobalt API documentation](https://github.com/imputnet/cobalt/blob/main/docs/api.md).
+MediaFilez tries configured endpoints in order, falls through failures, and cools down dead hosts. Directory results are filtered to the requested service and exclude Turnstile-protected instances. `COBALT_API_KEY` is sent only to operator-configured endpoints, never endpoints learned from the directory. Directory connections repeat the public-address check when opening the socket, and Cobalt JSON responses have a fixed size limit. `COBALT_DIRECTORY_ENABLED` remains off because directory entries are third-party services with separate privacy, availability, and authorization rules. The request and response format follows the [Cobalt API documentation](https://github.com/imputnet/cobalt/blob/main/docs/api.md).
 
 ## Cookies and restricted posts
 
@@ -138,13 +143,14 @@ MediaFilez does not bypass private-account permissions, paywalls, DRM, or remove
 | `DISCORD_UPLOAD_ATTEMPTS` | `3` | Verified attachment upload attempts |
 | `JOB_TIMEOUT_MS` | `840000` | Whole-job timeout below Discord's token lifetime |
 | `YTDLP_CONCURRENT_FRAGMENTS` | `4` | Fragment transfers inside one yt-dlp attempt |
-| `YTDLP_IMPERSONATE` | `chrome` | yt-dlp request impersonation target; use `none` to disable |
+| `YTDLP_IMPERSONATE` | disabled | Optional yt-dlp impersonation target; enable only when `yt-dlp --list-impersonate-targets` reports it as available |
 | `FFMPEG_THREADS` | `2` | Encoder threads per fitting job |
 | `GALLERY_DL_ENABLED` | `true` | Enables gallery and image extraction |
 | `PAGE_METADATA_ENABLED` | `true` | Enables generic page metadata extraction |
 | `PAGE_METADATA_MAX_SIZE` | `1mb` | Maximum HTML read by the metadata engine |
 | `INSTAGRAM_PROXY_HOSTS` | `www.kkkinstagram.com` | Ordered public Instagram relay hosts; use `none` to disable |
-| `COBALT_API_ENDPOINTS` | empty | Operator-authorized Cobalt instances |
+| `COBALT_API_ENDPOINTS` | empty | Operator-authorized instances; Compose supplies its two internal Cobalt endpoints |
+| `COBALT_DIRECTORY_ENABLED` | `false` | Opt in to tested, Turnstile-free third-party instances from cobalt.directory |
 | `DISABLED_ENGINES` | empty | Engine names removed from every plan |
 
 `.env.example` contains timeout, upload retry, path override, cookie, and Cobalt settings.

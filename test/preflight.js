@@ -21,6 +21,28 @@ async function commandOk(command, args = ["--version"]) {
     }
 }
 
+async function ytDlpOk() {
+    const command = resolveYtDlpPath();
+    const version = await commandOk(command);
+    if (!version.ok || !config.ytdlpImpersonate) return version;
+
+    try {
+        const { stdout, stderr } = await execFileAsync(command, ["--list-impersonate-targets"], {
+            timeout: 10_000,
+            windowsHide: true,
+            maxBuffer: 1024 * 1024,
+        });
+        const target = config.ytdlpImpersonate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const available = new RegExp(`^${target}(?:-|\\s)`, "im").test(stdout || stderr);
+        return {
+            ok: available,
+            detail: `${version.detail}; ${config.ytdlpImpersonate} impersonation ${available ? "ready" : "unavailable"}`,
+        };
+    } catch {
+        return { ok: false, detail: `${version.detail}; could not inspect impersonation targets` };
+    }
+}
+
 async function cookieFileOk() {
     if (!config.mediaCookiesFile) {
         const browser = config.ytdlpCookiesFromBrowser
@@ -76,7 +98,7 @@ const checks = [
     ["CLIENT_ID", { ok: Boolean(config.clientId), detail: config.clientId ? "configured" : "missing" }, false],
     ["ffmpeg", await commandOk(ffmpegPaths.ffmpeg, ["-version"]), false],
     ["ffprobe", await commandOk(ffmpegPaths.ffprobe, ["-version"]), false],
-    ["yt-dlp", await commandOk(resolveYtDlpPath()), true],
+    ["yt-dlp", await ytDlpOk(), true],
     ["gallery-dl", config.galleryDlEnabled ? await commandOk(resolveGalleryDlPath()) : { ok: true, detail: "disabled" }, false],
     ["cookie source", await cookieFileOk(), false],
     ["Cobalt", await cobaltOk(), false],

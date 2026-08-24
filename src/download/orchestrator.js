@@ -13,6 +13,7 @@ import { downloadWithYouTubeJs } from "./engines/youtubeJs.js";
 import { downloadWithGalleryDl } from "./engines/galleryDl.js";
 import { downloadFromPageMetadata } from "./engines/pageMetadata.js";
 import { downloadWithInstagramProxy } from "./engines/instagramProxy.js";
+import { downloadFromRedditEmbed } from "./engines/redditEmbed.js";
 
 const DEFAULT_ENGINES = new Map([
     ["direct-http", downloadDirectHttp],
@@ -22,7 +23,16 @@ const DEFAULT_ENGINES = new Map([
     ["gallery-dl", downloadWithGalleryDl],
     ["page-metadata", downloadFromPageMetadata],
     ["instagram-proxy", downloadWithInstagramProxy],
+    ["reddit-embed", downloadFromRedditEmbed],
 ]);
+
+function compactEngineError(message) {
+    const detail = String(message || "Unknown engine failure").replace(/\s+/g, " ").trim();
+    if (/you(?:'|’)ve been blocked by network security/i.test(detail)) {
+        return "The source blocked this server's network address.";
+    }
+    return detail.length > 800 ? `${detail.slice(0, 797)}...` : detail;
+}
 
 function abortError() {
     return userError(
@@ -44,10 +54,13 @@ function publicFailure(attempts, outputType) {
     if (/gallery-dl is unavailable/i.test(messages) && attempts.length === 1) {
         return "gallery-dl is unavailable. Run pnpm run tools:install, set GALLERY_DL_PATH, or use Docker.";
     }
+    if (/contains image media, not video|returned image media/i.test(messages)) {
+        return "The source is an image. Choose image output and try again.";
+    }
     if (/account authentication|cookies|login required|empty media response/i.test(messages)) {
         return "This post needs an authenticated session. Export fresh browser cookies to MEDIA_COOKIES_FILE, then try again.";
     }
-    if (/HTTP (?:Error )?403|forbidden/i.test(messages)) {
+    if (/HTTP (?:Error )?403|forbidden|blocked this server's network address/i.test(messages)) {
         return "This source blocked automated access (HTTP 403), and no enabled engine could extract its media. Try a direct media URL or another source.";
     }
     if (/unsupported url|no suitable extractor/i.test(messages)) {
@@ -120,7 +133,7 @@ export async function downloadMedia(rawUrl, jobDir, options = {}) {
                 };
             }
 
-            const detail = error instanceof DownloadMethodError ? error.publicMessage : error.message;
+            const detail = compactEngineError(error instanceof DownloadMethodError ? error.publicMessage : error.message);
             attempts.push({ engine: engineName, error: detail, elapsedMs: performance.now() - startedAt });
             log.warn(`${engineName} failed: ${detail}`);
             await fs.rm(attemptDir, { recursive: true, force: true });

@@ -43,6 +43,69 @@ function addValue(values, key, value) {
     values.set(normalized, current);
 }
 
+function addUrl(candidates, value, baseUrl) {
+    if (!value) return;
+    try {
+        const url = new URL(value, baseUrl);
+        if (["http:", "https:"].includes(url.protocol) && url.href !== baseUrl.href) candidates.push(url.href);
+    } catch {
+        // Ignore malformed metadata and continue with the remaining candidates.
+    }
+}
+
+function wrappedUrlCandidates(baseUrl) {
+    const candidates = [];
+    for (const value of baseUrl.searchParams.values()) {
+        let decoded = value;
+        for (let pass = 0; pass < 2; pass += 1) {
+            if (/^https?:\/\//i.test(decoded)) addUrl(candidates, decoded, baseUrl);
+            try {
+                const next = decodeURIComponent(decoded);
+                if (next === decoded) break;
+                decoded = next;
+            } catch {
+                break;
+            }
+        }
+    }
+    return candidates;
+}
+
+function jsonLdCandidates(html, baseUrl, outputType) {
+    const acceptedKeys = {
+        video: new Set(["contenturl", "embedurl"]),
+        audio: new Set(["contenturl"]),
+        image: new Set(["contenturl", "thumbnailurl"]),
+        thumbnail: new Set(["contenturl", "thumbnailurl"]),
+    }[outputType] ?? new Set();
+    const candidates = [];
+    let visitedValues = 0;
+
+    function visit(value, key = "", depth = 0) {
+        visitedValues += 1;
+        if (depth > 16 || visitedValues > 2_000 || candidates.length >= 12) return;
+        if (typeof value === "string") {
+            if (acceptedKeys.has(key.toLowerCase())) addUrl(candidates, value, baseUrl);
+            return;
+        }
+        if (Array.isArray(value)) {
+            for (const item of value) visit(item, key, depth + 1);
+            return;
+        }
+        if (!value || typeof value !== "object") return;
+        for (const [childKey, childValue] of Object.entries(value)) visit(childValue, childKey, depth + 1);
+    }
+
+    for (const match of html.matchAll(/<script\b[^>]*type\s*=\s*(?:"application\/ld\+json"|'application\/ld\+json'|application\/ld\+json)[^>]*>([\s\S]*?)<\/script\s*>/gi)) {
+        try {
+            visit(JSON.parse(decodeHtml(match[1]).trim()));
+        } catch {
+            continue;
+        }
+    }
+    return candidates;
+}
+
 export function extractPageMetadata(html, baseUrl, outputType) {
     const values = new Map();
     for (const match of html.matchAll(/<meta\b[^>]*>/gi)) {
@@ -66,15 +129,8 @@ export function extractPageMetadata(html, baseUrl, outputType) {
     const rawCandidates = [...keys.flatMap((key) => values.get(key) ?? [])];
     if (["video", "audio"].includes(outputType)) rawCandidates.push(...inlineMedia);
 
-    const candidates = [];
-    for (const value of rawCandidates) {
-        try {
-            const url = new URL(value, baseUrl);
-            if (["http:", "https:"].includes(url.protocol) && url.href !== baseUrl.href) candidates.push(url.href);
-        } catch {
-            continue;
-        }
-    }
+    const candidates = [...wrappedUrlCandidates(baseUrl), ...jsonLdCandidates(html, baseUrl, outputType)];
+    for (const value of rawCandidates) addUrl(candidates, value, baseUrl);
 
     return {
         candidates: [...new Set(candidates)].slice(0, 6),

@@ -3,6 +3,7 @@ import { config } from "../config.js";
 
 const YOUTUBE_HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"]);
 const INSTAGRAM_HOSTS = new Set(["instagram.com", "www.instagram.com", "m.instagram.com"]);
+const REDDIT_HOSTS = new Set(["reddit.com", "www.reddit.com", "old.reddit.com", "redd.it"]);
 const GALLERY_HOSTS = new Set([
     ...INSTAGRAM_HOSTS,
     "pinterest.com",
@@ -66,6 +67,7 @@ export function classifySource(rawUrl) {
         direct: DIRECT_EXTENSIONS.has(extension),
         youtube: YOUTUBE_HOSTS.has(host),
         instagram: INSTAGRAM_HOSTS.has(host),
+        reddit: REDDIT_HOSTS.has(host),
         gallery: GALLERY_HOSTS.has(host),
         cobalt: COBALT_HOSTS.has(host),
         host,
@@ -77,6 +79,9 @@ export function planEngines(rawUrl, outputType, settings = config) {
     let names;
     if (source.direct) names = ["direct-http", "yt-dlp"];
     else if (source.youtube) names = ["yt-dlp", "youtube-js", "cobalt", "page-metadata"];
+    else if (source.reddit && ["image", "thumbnail"].includes(outputType)) {
+        names = ["reddit-embed", "gallery-dl", "yt-dlp", "cobalt", "page-metadata"];
+    } else if (source.reddit) names = ["cobalt", "yt-dlp", "reddit-embed", "gallery-dl", "page-metadata"];
     else if (source.instagram && ["image", "thumbnail"].includes(outputType)) {
         names = ["gallery-dl", "yt-dlp", "instagram-proxy", "cobalt", "page-metadata"];
     } else if (source.instagram) {

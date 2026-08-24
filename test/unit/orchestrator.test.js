@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { downloadMedia } from '../../src/download/orchestrator.js';
+import { DownloadMethodError } from '../../src/utils/errors.js';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
 
@@ -94,5 +95,45 @@ test('does not misreport a generic HTTP 403 as missing account cookies', async (
       engines,
     }),
     (error) => /blocked automated access/.test(error.message) && !/cookies/i.test(error.message),
+  );
+});
+
+test('replaces verbose network block pages with a bounded engine error', async (t) => {
+  const jobDir = await tempJob();
+  t.after(() => fs.rm(jobDir, { recursive: true, force: true }));
+  const blockPage = `[reddit][error] ${'body{color:red}'.repeat(10_000)} You've been blocked by network security.`;
+
+  await assert.rejects(
+    downloadMedia('https://example.com/blocked', jobDir, {
+      outputType: 'video',
+      plan: ['gallery-dl'],
+      engines: new Map([
+        ['gallery-dl', async () => { throw new DownloadMethodError('gallery-dl', blockPage); }],
+      ]),
+    }),
+    (error) => {
+      assert.equal(error.attempts[0].error, "The source blocked this server's network address.");
+      return true;
+    },
+  );
+});
+
+test('reports an image post before generic network failures', async (t) => {
+  const jobDir = await tempJob();
+  t.after(() => fs.rm(jobDir, { recursive: true, force: true }));
+  const engines = new Map([
+    ['blocked', async () => { throw new Error('HTTP Error 403: Forbidden'); }],
+    ['reddit-embed', async () => {
+      throw new DownloadMethodError('reddit-embed', 'The Reddit post contains image media, not video.');
+    }],
+  ]);
+
+  await assert.rejects(
+    downloadMedia('https://www.reddit.com/r/example/comments/abc/post', jobDir, {
+      outputType: 'video',
+      plan: ['blocked', 'reddit-embed'],
+      engines,
+    }),
+    (error) => /source is an image.*choose image output/i.test(error.message),
   );
 });
