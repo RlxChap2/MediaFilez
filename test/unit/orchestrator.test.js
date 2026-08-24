@@ -117,3 +117,23 @@ test('replaces verbose network block pages with a bounded engine error', async (
     },
   );
 });
+
+test('reports an image post before generic network failures', async (t) => {
+  const jobDir = await tempJob();
+  t.after(() => fs.rm(jobDir, { recursive: true, force: true }));
+  const engines = new Map([
+    ['blocked', async () => { throw new Error('HTTP Error 403: Forbidden'); }],
+    ['reddit-embed', async () => {
+      throw new DownloadMethodError('reddit-embed', 'The Reddit post contains image media, not video.');
+    }],
+  ]);
+
+  await assert.rejects(
+    downloadMedia('https://www.reddit.com/r/example/comments/abc/post', jobDir, {
+      outputType: 'video',
+      plan: ['blocked', 'reddit-embed'],
+      engines,
+    }),
+    (error) => /source is an image.*choose image output/i.test(error.message),
+  );
+});

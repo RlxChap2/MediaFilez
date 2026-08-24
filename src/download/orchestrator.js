@@ -13,6 +13,7 @@ import { downloadWithYouTubeJs } from "./engines/youtubeJs.js";
 import { downloadWithGalleryDl } from "./engines/galleryDl.js";
 import { downloadFromPageMetadata } from "./engines/pageMetadata.js";
 import { downloadWithInstagramProxy } from "./engines/instagramProxy.js";
+import { downloadFromRedditEmbed } from "./engines/redditEmbed.js";
 
 const DEFAULT_ENGINES = new Map([
     ["direct-http", downloadDirectHttp],
@@ -22,6 +23,7 @@ const DEFAULT_ENGINES = new Map([
     ["gallery-dl", downloadWithGalleryDl],
     ["page-metadata", downloadFromPageMetadata],
     ["instagram-proxy", downloadWithInstagramProxy],
+    ["reddit-embed", downloadFromRedditEmbed],
 ]);
 
 function compactEngineError(message) {
@@ -51,6 +53,9 @@ function publicFailure(attempts, outputType) {
     }
     if (/gallery-dl is unavailable/i.test(messages) && attempts.length === 1) {
         return "gallery-dl is unavailable. Run pnpm run tools:install, set GALLERY_DL_PATH, or use Docker.";
+    }
+    if (/contains image media, not video|returned image media/i.test(messages)) {
+        return "The source is an image. Choose image output and try again.";
     }
     if (/account authentication|cookies|login required|empty media response/i.test(messages)) {
         return "This post needs an authenticated session. Export fresh browser cookies to MEDIA_COOKIES_FILE, then try again.";

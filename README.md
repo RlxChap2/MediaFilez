@@ -15,6 +15,7 @@ The command has three output choices:
 - Local installs include FFmpeg and FFprobe packages. `pnpm install` also fetches a SHA-256 verified gallery-dl build into `.tools` when no operator path is supplied.
 - Instagram has a direct embed-proxy fallback. The default converts `instagram.com` to `kkkinstagram.com`, then downloads the returned media through the same redirect, SSRF, size, and signature checks as any other URL.
 - Unknown pages gain a metadata extractor for Open Graph, Twitter card, and HTML media tags.
+- Share-link wrappers and JSON-LD `contentUrl` fields feed the guarded direct downloader. Reddit image posts also have a first-party embed fallback for cases where its normal page or JSON API blocks server addresses.
 - Multiple Cobalt endpoints rotate across jobs. A failed endpoint enters a short cooldown so every queued job does not wait on the same dead host.
 - The queue accepts four jobs by default and two jobs per user. Both values remain configurable.
 - Discord's `attachmentSizeLimit` is now the normal upload target. The old 7 MiB ceiling is gone.
@@ -30,6 +31,8 @@ Engine order depends on the host and requested output.
 | Instagram video or audio | yt-dlp, Instagram proxy, Cobalt, gallery-dl, page metadata |
 | Instagram image | gallery-dl, yt-dlp, Instagram proxy, Cobalt, page metadata |
 | Pinterest, Flickr, Imgur | gallery-dl, yt-dlp, Cobalt, page metadata |
+| Reddit image | Reddit embed, gallery-dl, yt-dlp, Cobalt, page metadata |
+| Reddit video or audio | Cobalt, yt-dlp, Reddit embed, gallery-dl, page metadata |
 | Other Cobalt services | Cobalt, yt-dlp, gallery-dl, page metadata |
 | Unknown page | yt-dlp, gallery-dl, page metadata, direct HTTP |
 

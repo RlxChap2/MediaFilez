@@ -33,7 +33,7 @@ interaction
 
 `planner.js` classifies only routing hints. A host list does not claim support. The adapter still has to return media that passes validation.
 
-Specific extractors run before generic page metadata. Direct URLs avoid HTML resolution. Instagram can use a configured host-rewrite relay after yt-dlp. Pinterest and other gallery hosts prefer gallery-dl. Cobalt appears only when an endpoint or opt-in directory exists.
+Specific extractors run before generic page metadata. Direct URLs avoid HTML resolution. Instagram can use a configured host-rewrite relay after yt-dlp. Pinterest and other gallery hosts prefer gallery-dl. Reddit image posts prefer its public embed surface when normal pages block data-center addresses. Cobalt appears only when an endpoint or opt-in directory exists.
 
 An engine name can appear once in a plan. `DISABLED_ENGINES` removes it before any attempt directory is created.
 
@@ -49,9 +49,13 @@ Image output accepts a source image or a valid video. The media processor copies
 
 ## Generic page metadata
 
-The page metadata adapter reads at most `PAGE_METADATA_MAX_SIZE`. It accepts HTML responses, extracts ordered Open Graph, Twitter card, and media-tag URLs, resolves relative paths, then sends each candidate through direct HTTP guards.
+The page metadata adapter reads at most `PAGE_METADATA_MAX_SIZE`. It accepts HTML responses, extracts ordered Open Graph, Twitter card, media-tag, JSON-LD `contentUrl`, and URL-wrapped candidates, resolves relative paths, then sends each candidate through direct HTTP guards.
 
 The adapter does not run page JavaScript, execute embedded code, follow non-HTTP schemes, or scrape arbitrary `<img>` elements. Those limits keep an unknown page from turning into an unbounded crawler.
+
+## Reddit embed fallback
+
+The Reddit adapter resolves short links through guarded redirects, derives the matching `embed.reddit.com` post URL, and reads a bounded HTML response. It accepts only post media hosted on Reddit's media domains. It ignores community icons, avatars, and other page images. The selected file still passes direct HTTP SSRF and byte limits plus the orchestrator's signature and stream validation.
 
 ## Cobalt endpoint state
 

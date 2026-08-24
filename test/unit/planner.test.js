@@ -36,6 +36,12 @@ test('sends Pinterest to gallery-dl for video and image posts', () => {
   ]);
 });
 
+test('uses Reddit embed fallback for short image links', () => {
+  assert.deepEqual(planEngines('https://www.reddit.com/r/discordapp/s/example', 'image', settings), [
+    'reddit-embed', 'gallery-dl', 'yt-dlp', 'cobalt', 'page-metadata',
+  ]);
+});
+
 test('filters disabled and unconfigured engines', () => {
   const minimal = {
     ...settings,
