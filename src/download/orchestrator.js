@@ -24,6 +24,14 @@ const DEFAULT_ENGINES = new Map([
     ["instagram-proxy", downloadWithInstagramProxy],
 ]);
 
+function compactEngineError(message) {
+    const detail = String(message || "Unknown engine failure").replace(/\s+/g, " ").trim();
+    if (/you(?:'|’)ve been blocked by network security/i.test(detail)) {
+        return "The source blocked this server's network address.";
+    }
+    return detail.length > 800 ? `${detail.slice(0, 797)}...` : detail;
+}
+
 function abortError() {
     return userError(
         "The job timed out before the download finished. Try a smaller file or a faster source.",
@@ -47,7 +55,7 @@ function publicFailure(attempts, outputType) {
     if (/account authentication|cookies|login required|empty media response/i.test(messages)) {
         return "This post needs an authenticated session. Export fresh browser cookies to MEDIA_COOKIES_FILE, then try again.";
     }
-    if (/HTTP (?:Error )?403|forbidden/i.test(messages)) {
+    if (/HTTP (?:Error )?403|forbidden|blocked this server's network address/i.test(messages)) {
         return "This source blocked automated access (HTTP 403), and no enabled engine could extract its media. Try a direct media URL or another source.";
     }
     if (/unsupported url|no suitable extractor/i.test(messages)) {
@@ -120,7 +128,7 @@ export async function downloadMedia(rawUrl, jobDir, options = {}) {
                 };
             }
 
-            const detail = error instanceof DownloadMethodError ? error.publicMessage : error.message;
+            const detail = compactEngineError(error instanceof DownloadMethodError ? error.publicMessage : error.message);
             attempts.push({ engine: engineName, error: detail, elapsedMs: performance.now() - startedAt });
             log.warn(`${engineName} failed: ${detail}`);
             await fs.rm(attemptDir, { recursive: true, force: true });

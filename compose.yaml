@@ -6,6 +6,8 @@ services:
       - .env
     environment:
       COBALT_API_ENDPOINTS: http://cobalt:9000
+      GALLERY_DL_PATH: /usr/local/bin/gallery-dl
+      YTDLP_PATH: /usr/local/bin/yt-dlp
     depends_on:
       - cobalt
     restart: unless-stopped

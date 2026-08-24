@@ -46,6 +46,8 @@ function parseList(value) {
         .filter(Boolean);
 }
 
+const ytdlpImpersonate = String(process.env.YTDLP_IMPERSONATE || "").trim();
+
 export const config = {
     botToken: process.env.BOT_TOKEN,
     clientId: process.env.CLIENT_ID,
@@ -74,10 +76,7 @@ export const config = {
     ytdlpPath: process.env.YTDLP_PATH || null,
     ytdlpCookiesFromBrowser: process.env.YTDLP_COOKIES_FROM_BROWSER || null,
     ytdlpConcurrentFragments: parseInteger(process.env.YTDLP_CONCURRENT_FRAGMENTS, 4, 1, 16),
-    ytdlpImpersonate:
-        String(process.env.YTDLP_IMPERSONATE || "chrome").toLowerCase() === "none"
-            ? null
-            : process.env.YTDLP_IMPERSONATE || "chrome",
+    ytdlpImpersonate: ytdlpImpersonate.toLowerCase() === "none" ? null : ytdlpImpersonate || null,
     ffmpegPath: process.env.FFMPEG_PATH || null,
     ffprobePath: process.env.FFPROBE_PATH || null,
     ffmpegThreads: parseInteger(process.env.FFMPEG_THREADS, 2, 1, 8),

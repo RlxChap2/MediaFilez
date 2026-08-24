@@ -45,7 +45,7 @@ The catch-all engines cover many sites, including Pinterest, but no downloader c
 
 Local users do not need to install FFmpeg, FFprobe, yt-dlp, or gallery-dl by hand. The package install supplies them. Run `pnpm run preflight` to see the exact binary version and path status.
 
-Docker uses Debian FFmpeg and a pinned gallery-dl Python environment instead of the local `.tools` build.
+Docker uses Debian FFmpeg plus pinned Python builds of gallery-dl and yt-dlp. Its yt-dlp installation includes curl-cffi for optional browser impersonation.
 
 ## Setup
 
@@ -90,6 +90,8 @@ docker compose up -d --build
 docker compose logs -f --tail=100
 docker compose run --rm mediafilez pnpm run preflight
 ```
+
+Set `YTDLP_IMPERSONATE=chrome` on Docker hosts only after preflight confirms `chrome impersonation ready`. Leave it disabled for installations whose yt-dlp build does not include curl-cffi.
 
 Cobalt's maintainers state that hosted instances are not intended for unrelated projects without permission. Self-hosting is the safe default. The included Compose service follows the project's [instance documentation](https://github.com/imputnet/cobalt/blob/main/docs/run-an-instance.md).
 
@@ -138,7 +140,7 @@ MediaFilez does not bypass private-account permissions, paywalls, DRM, or remove
 | `DISCORD_UPLOAD_ATTEMPTS` | `3` | Verified attachment upload attempts |
 | `JOB_TIMEOUT_MS` | `840000` | Whole-job timeout below Discord's token lifetime |
 | `YTDLP_CONCURRENT_FRAGMENTS` | `4` | Fragment transfers inside one yt-dlp attempt |
-| `YTDLP_IMPERSONATE` | `chrome` | yt-dlp request impersonation target; use `none` to disable |
+| `YTDLP_IMPERSONATE` | disabled | Optional yt-dlp impersonation target; enable only when `yt-dlp --list-impersonate-targets` reports it as available |
 | `FFMPEG_THREADS` | `2` | Encoder threads per fitting job |
 | `GALLERY_DL_ENABLED` | `true` | Enables gallery and image extraction |
 | `PAGE_METADATA_ENABLED` | `true` | Enables generic page metadata extraction |
