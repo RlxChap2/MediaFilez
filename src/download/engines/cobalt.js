@@ -3,6 +3,7 @@ import https from "node:https";
 import { config } from "../../config.js";
 import { DownloadMethodError } from "../../utils/errors.js";
 import { assertPublicHttpUrl, publicDnsLookup } from "../../utils/security.js";
+import { preferredVideoHeight } from "../videoQuality.js";
 import { downloadDirectHttp } from "./directHttp.js";
 
 let directoryCache = { expiresAt: 0, data: null };
@@ -30,6 +31,7 @@ const DIRECTORY_SERVICE_HOSTS = [
     ["facebook", ["facebook.com", "fb.watch"]],
     ["bluesky", ["bsky.app"]],
     ["newgrounds", ["newgrounds.com"]],
+    ["loom", ["loom.com"]],
 ];
 
 function uniqueEndpoints(values) {
@@ -137,10 +139,13 @@ async function directoryEndpoints(signal, rawUrl) {
     }
 }
 
-function payload(rawUrl, outputType) {
+export function cobaltRequestPayload(rawUrl, outputType, targetBytes) {
+    const preferredHeight = ["auto", "video"].includes(outputType)
+        ? preferredVideoHeight(targetBytes)
+        : null;
     return {
         url: rawUrl,
-        videoQuality: "max",
+        videoQuality: preferredHeight ? String(preferredHeight) : "max",
         youtubeVideoCodec: "h264",
         youtubeVideoContainer: "mp4",
         audioFormat: outputType === "audio" ? "mp3" : "best",
@@ -268,7 +273,7 @@ async function callEndpoint(endpoint, rawUrl, attemptDir, options, trustedEndpoi
         : AbortSignal.timeout(config.cobaltEndpointTimeoutMs);
     const response = await requestCobaltEndpoint(
         endpointUrl,
-        JSON.stringify(payload(rawUrl, options.outputType)),
+        JSON.stringify(cobaltRequestPayload(rawUrl, options.outputType ?? "video", options.targetBytes)),
         signal,
         trustedEndpoint,
     );

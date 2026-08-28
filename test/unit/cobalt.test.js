@@ -5,8 +5,9 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { config } from '../../src/config.js';
+import { config, MB } from '../../src/config.js';
 import {
+  cobaltRequestPayload,
   cobaltRequestHeaders,
   downloadWithCobalt,
   readBoundedJsonResponse,
@@ -15,6 +16,14 @@ import {
 } from '../../src/download/engines/cobalt.js';
 
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
+
+test('caps Cobalt video quality for small upload targets', () => {
+  assert.equal(cobaltRequestPayload('https://example.com/video', 'auto', 10 * MB).videoQuality, '360');
+  assert.equal(cobaltRequestPayload('https://example.com/video', 'video', 50 * MB).videoQuality, '480');
+  assert.equal(cobaltRequestPayload('https://example.com/video', 'video', 100 * MB).videoQuality, '720');
+  assert.equal(cobaltRequestPayload('https://example.com/video', 'video', 500 * MB).videoQuality, 'max');
+  assert.equal(cobaltRequestPayload('https://example.com/audio', 'audio', 10 * MB).videoQuality, 'max');
+});
 
 test('selects Cobalt directory endpoints that passed tests for the requested service', () => {
   const response = {

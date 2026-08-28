@@ -14,6 +14,7 @@ import { downloadWithGalleryDl } from "./engines/galleryDl.js";
 import { downloadFromPageMetadata } from "./engines/pageMetadata.js";
 import { downloadWithInstagramProxy } from "./engines/instagramProxy.js";
 import { downloadFromRedditEmbed } from "./engines/redditEmbed.js";
+import { downloadWithRedditProxy } from "./engines/redditProxy.js";
 
 const DEFAULT_ENGINES = new Map([
     ["direct-http", downloadDirectHttp],
@@ -24,6 +25,7 @@ const DEFAULT_ENGINES = new Map([
     ["page-metadata", downloadFromPageMetadata],
     ["instagram-proxy", downloadWithInstagramProxy],
     ["reddit-embed", downloadFromRedditEmbed],
+    ["reddit-proxy", downloadWithRedditProxy],
 ]);
 
 function compactEngineError(message) {

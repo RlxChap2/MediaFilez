@@ -64,3 +64,13 @@ test("auto metadata tries video, audio, then image candidates", () => {
         "https://cdn.example/post.jpg",
     ]);
 });
+
+test("decodes each HTML entity exactly once", () => {
+    const html = `
+        <meta property="og:title" content="A &amp;quot;nested&amp;quot; title">
+        <meta property="og:image" content="https://cdn.example/post.jpg">
+    `;
+    const metadata = extractPageMetadata(html, new URL("https://example.com/post"), "image");
+
+    assert.equal(metadata.title, "A &quot;nested&quot; title");
+});

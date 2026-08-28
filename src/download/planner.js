@@ -3,7 +3,14 @@ import { config } from "../config.js";
 
 const YOUTUBE_HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"]);
 const INSTAGRAM_HOSTS = new Set(["instagram.com", "www.instagram.com", "m.instagram.com"]);
-const REDDIT_HOSTS = new Set(["reddit.com", "www.reddit.com", "old.reddit.com", "redd.it"]);
+const REDDIT_HOSTS = new Set([
+    "reddit.com",
+    "www.reddit.com",
+    "m.reddit.com",
+    "old.reddit.com",
+    "new.reddit.com",
+    "redd.it",
+]);
 const GALLERY_HOSTS = new Set([
     ...INSTAGRAM_HOSTS,
     "pinterest.com",
@@ -40,6 +47,23 @@ const COBALT_HOSTS = new Set([
     "streamable.com",
     "www.streamable.com",
     "vk.com",
+    "bilibili.com",
+    "www.bilibili.com",
+    "b23.tv",
+    "dailymotion.com",
+    "www.dailymotion.com",
+    "dai.ly",
+    "loom.com",
+    "www.loom.com",
+    "newgrounds.com",
+    "www.newgrounds.com",
+    "ok.ru",
+    "www.ok.ru",
+    "rutube.ru",
+    "www.rutube.ru",
+    "twitch.tv",
+    "www.twitch.tv",
+    "clips.twitch.tv",
 ]);
 const DIRECT_EXTENSIONS = new Set([
     ".mp4",
@@ -77,18 +101,19 @@ export function classifySource(rawUrl) {
 export function planEngines(rawUrl, outputType, settings = config) {
     const source = classifySource(rawUrl);
     let names;
-    if (source.direct) names = ["direct-http", "yt-dlp"];
+    if (source.direct) names = ["direct-http"];
     else if (source.youtube) names = ["yt-dlp", "youtube-js", "cobalt", "page-metadata"];
     else if (source.reddit && ["auto", "image", "thumbnail"].includes(outputType)) {
-        names = ["reddit-embed", "gallery-dl", "yt-dlp", "cobalt", "page-metadata"];
-    } else if (source.reddit) names = ["cobalt", "yt-dlp", "reddit-embed", "gallery-dl", "page-metadata"];
-    else if (source.instagram && ["auto", "image", "thumbnail"].includes(outputType)) {
+        names = ["reddit-embed", "reddit-proxy", "gallery-dl", "yt-dlp", "cobalt", "page-metadata"];
+    } else if (source.reddit) {
+        names = ["cobalt", "yt-dlp", "reddit-embed", "reddit-proxy", "gallery-dl", "page-metadata"];
+    } else if (source.instagram && ["auto", "image", "thumbnail"].includes(outputType)) {
         names = ["gallery-dl", "yt-dlp", "instagram-proxy", "cobalt", "page-metadata"];
     } else if (source.instagram) {
         names = ["yt-dlp", "instagram-proxy", "cobalt", "gallery-dl", "page-metadata"];
     } else if (source.gallery) names = ["gallery-dl", "yt-dlp", "cobalt", "page-metadata"];
     else if (source.cobalt) names = ["cobalt", "yt-dlp", "gallery-dl", "page-metadata"];
-    else names = ["yt-dlp", "gallery-dl", "page-metadata", "direct-http"];
+    else names = ["page-metadata", "direct-http"];
 
     return names.filter((name) => {
         if (settings.disabledEngines?.has(name)) return false;
@@ -96,6 +121,7 @@ export function planEngines(rawUrl, outputType, settings = config) {
         if (name === "gallery-dl" && !settings.galleryDlEnabled) return false;
         if (name === "page-metadata" && settings.pageMetadataEnabled === false) return false;
         if (name === "instagram-proxy" && settings.instagramProxyHosts?.length === 0) return false;
+        if (name === "reddit-proxy" && settings.redditProxyHosts?.length === 0) return false;
         if (name === "cobalt" && settings.cobaltApiEndpoints.length === 0 && !settings.cobaltDirectoryEnabled) {
             return false;
         }

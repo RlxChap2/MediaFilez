@@ -1,30 +1,17 @@
 import fs from "node:fs/promises";
 import { config } from "../../config.js";
 import { DownloadMethodError } from "../../utils/errors.js";
+import { decodeHtmlEntities } from "../../utils/htmlEntities.js";
 import { downloadDirectHttp, openPublicHttpResponse } from "./directHttp.js";
 import { downloadWithYtDlp } from "./ytDlp.js";
 
 const REDDIT_PAGE_HOSTS = new Set(["reddit.com", "www.reddit.com", "old.reddit.com", "redd.it"]);
 const REDDIT_MEDIA_HOSTS = new Set(["i.redd.it", "preview.redd.it", "external-preview.redd.it", "v.redd.it"]);
 
-function decodeHtml(value) {
-    return value
-        .replace(/&quot;/gi, '"')
-        .replace(/&#39;|&apos;/gi, "'")
-        .replace(/&amp;/gi, "&")
-        .replace(/&#(\d+);/g, (match, code) => {
-            try {
-                return String.fromCodePoint(Number(code));
-            } catch {
-                return match;
-            }
-        });
-}
-
 function addRedditMediaUrl(candidates, value) {
     if (!value) return;
     try {
-        const url = new URL(decodeHtml(value));
+        const url = new URL(decodeHtmlEntities(value));
         if (["http:", "https:"].includes(url.protocol) && REDDIT_MEDIA_HOSTS.has(url.hostname.toLowerCase())) {
             candidates.push(url.href);
         }
@@ -41,7 +28,7 @@ export function extractRedditPostMedia(html) {
         const encoded = tag[0].match(/\b(?:data|data-faceplate-tracking-context)="([^"]+)"/i)?.[1];
         if (!encoded) continue;
         try {
-            const post = JSON.parse(decodeHtml(encoded)).post;
+            const post = JSON.parse(decodeHtmlEntities(encoded)).post;
             if (!post || typeof post !== "object") continue;
             if (["image", "video"].includes(post.type)) mediaKind ??= post.type;
             addRedditMediaUrl(candidates, post.url);

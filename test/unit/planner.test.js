@@ -8,6 +8,7 @@ const settings = {
   galleryDlEnabled: true,
   pageMetadataEnabled: true,
   instagramProxyHosts: ['www.kkkinstagram.com'],
+  redditProxyHosts: ['redditez.com'],
   cobaltApiEndpoints: ['http://cobalt:9000'],
   cobaltDirectoryEnabled: false,
 };
@@ -36,9 +37,27 @@ test('sends Pinterest to gallery-dl for video and image posts', () => {
   ]);
 });
 
+test('routes official Cobalt services through Cobalt before generic extractors', () => {
+  const urls = [
+    'https://www.bilibili.com/video/example',
+    'https://www.dailymotion.com/video/example',
+    'https://www.loom.com/share/example',
+    'https://www.newgrounds.com/portal/view/example',
+    'https://ok.ru/video/example',
+    'https://rutube.ru/video/example',
+    'https://clips.twitch.tv/example',
+  ];
+
+  for (const url of urls) {
+    assert.deepEqual(planEngines(url, 'auto', settings), [
+      'cobalt', 'yt-dlp', 'gallery-dl', 'page-metadata',
+    ]);
+  }
+});
+
 test('uses Reddit embed fallback for short image links', () => {
   assert.deepEqual(planEngines('https://www.reddit.com/r/discordapp/s/example', 'image', settings), [
-    'reddit-embed', 'gallery-dl', 'yt-dlp', 'cobalt', 'page-metadata',
+    'reddit-embed', 'reddit-proxy', 'gallery-dl', 'yt-dlp', 'cobalt', 'page-metadata',
   ]);
 });
 
@@ -47,10 +66,19 @@ test('lets auto detection use media-aware social extractors first', () => {
     'gallery-dl', 'yt-dlp', 'instagram-proxy', 'cobalt', 'page-metadata',
   ]);
   assert.deepEqual(planEngines('https://www.reddit.com/r/discordapp/s/example', 'auto', settings), [
-    'reddit-embed', 'gallery-dl', 'yt-dlp', 'cobalt', 'page-metadata',
+    'reddit-embed', 'reddit-proxy', 'gallery-dl', 'yt-dlp', 'cobalt', 'page-metadata',
   ]);
   assert.deepEqual(planEngines('https://cdn.example.com/file.mp3', 'auto', settings), [
-    'direct-http', 'yt-dlp',
+    'direct-http',
+  ]);
+});
+
+test('keeps unrecognized hosts inside guarded HTTP engines', () => {
+  assert.deepEqual(planEngines('https://example.com/post', 'auto', settings), [
+    'page-metadata', 'direct-http',
+  ]);
+  assert.deepEqual(planEngines('https://cdn.example.com/video.mp4', 'video', settings), [
+    'direct-http',
   ]);
 });
 
@@ -62,4 +90,12 @@ test('filters disabled and unconfigured engines', () => {
     pageMetadataEnabled: false,
   };
   assert.deepEqual(planEngines('https://youtu.be/dQw4w9WgXcQ', 'video', minimal), ['yt-dlp']);
+
+  assert.deepEqual(
+    planEngines('https://m.reddit.com/r/discordapp/s/example', 'auto', {
+      ...settings,
+      redditProxyHosts: [],
+    }),
+    ['reddit-embed', 'gallery-dl', 'yt-dlp', 'cobalt', 'page-metadata'],
+  );
 });
