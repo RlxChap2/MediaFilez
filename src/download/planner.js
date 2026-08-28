@@ -3,7 +3,14 @@ import { config } from "../config.js";
 
 const YOUTUBE_HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"]);
 const INSTAGRAM_HOSTS = new Set(["instagram.com", "www.instagram.com", "m.instagram.com"]);
-const REDDIT_HOSTS = new Set(["reddit.com", "www.reddit.com", "old.reddit.com", "redd.it"]);
+const REDDIT_HOSTS = new Set([
+    "reddit.com",
+    "www.reddit.com",
+    "m.reddit.com",
+    "old.reddit.com",
+    "new.reddit.com",
+    "redd.it",
+]);
 const GALLERY_HOSTS = new Set([
     ...INSTAGRAM_HOSTS,
     "pinterest.com",
@@ -80,9 +87,10 @@ export function planEngines(rawUrl, outputType, settings = config) {
     if (source.direct) names = ["direct-http", "yt-dlp"];
     else if (source.youtube) names = ["yt-dlp", "youtube-js", "cobalt", "page-metadata"];
     else if (source.reddit && ["auto", "image", "thumbnail"].includes(outputType)) {
-        names = ["reddit-embed", "gallery-dl", "yt-dlp", "cobalt", "page-metadata"];
-    } else if (source.reddit) names = ["cobalt", "yt-dlp", "reddit-embed", "gallery-dl", "page-metadata"];
-    else if (source.instagram && ["auto", "image", "thumbnail"].includes(outputType)) {
+        names = ["reddit-embed", "reddit-proxy", "gallery-dl", "yt-dlp", "cobalt", "page-metadata"];
+    } else if (source.reddit) {
+        names = ["cobalt", "yt-dlp", "reddit-embed", "reddit-proxy", "gallery-dl", "page-metadata"];
+    } else if (source.instagram && ["auto", "image", "thumbnail"].includes(outputType)) {
         names = ["gallery-dl", "yt-dlp", "instagram-proxy", "cobalt", "page-metadata"];
     } else if (source.instagram) {
         names = ["yt-dlp", "instagram-proxy", "cobalt", "gallery-dl", "page-metadata"];
@@ -96,6 +104,7 @@ export function planEngines(rawUrl, outputType, settings = config) {
         if (name === "gallery-dl" && !settings.galleryDlEnabled) return false;
         if (name === "page-metadata" && settings.pageMetadataEnabled === false) return false;
         if (name === "instagram-proxy" && settings.instagramProxyHosts?.length === 0) return false;
+        if (name === "reddit-proxy" && settings.redditProxyHosts?.length === 0) return false;
         if (name === "cobalt" && settings.cobaltApiEndpoints.length === 0 && !settings.cobaltDirectoryEnabled) {
             return false;
         }

@@ -58,6 +58,34 @@ test('auto accepts the first recognized media kind', async (t) => {
   assert.equal(result.method, 'detector');
 });
 
+test('falls back from a blocked Reddit response to a proxy artifact', async (t) => {
+  const jobDir = await tempJob();
+  t.after(() => fs.rm(jobDir, { recursive: true, force: true }));
+  const calls = [];
+  const engines = new Map([
+    ['reddit-embed', async () => {
+      calls.push('reddit-embed');
+      throw new DownloadMethodError('reddit-embed', 'HTTP 403');
+    }],
+    ['reddit-proxy', async (_url, attemptDir) => {
+      calls.push('reddit-proxy');
+      const filePath = path.join(attemptDir, 'result.png');
+      await fs.writeFile(filePath, PNG);
+      return { filePath, fileName: 'result.png', method: 'reddit-proxy:working.example' };
+    }],
+  ]);
+
+  const result = await downloadMedia('https://www.reddit.com/r/example/s/share', jobDir, {
+    outputType: 'auto',
+    plan: ['reddit-embed', 'reddit-proxy'],
+    engines,
+  });
+
+  assert.deepEqual(calls, ['reddit-embed', 'reddit-proxy']);
+  assert.equal(result.mediaKind, 'image');
+  assert.equal(result.method, 'reddit-proxy:working.example');
+});
+
 test('recovers a complete artifact after an engine error and stops fallback', async (t) => {
   const jobDir = await tempJob();
   t.after(() => fs.rm(jobDir, { recursive: true, force: true }));

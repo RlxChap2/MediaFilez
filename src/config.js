@@ -89,6 +89,10 @@ export const config = {
         process.env.INSTAGRAM_PROXY_HOSTS === undefined
             ? ["www.kkkinstagram.com"]
             : parseList(process.env.INSTAGRAM_PROXY_HOSTS),
+    redditProxyHosts:
+        process.env.REDDIT_PROXY_HOSTS === undefined
+            ? ["redditez.com"]
+            : parseList(process.env.REDDIT_PROXY_HOSTS),
     disabledEngines: new Set(parseList(process.env.DISABLED_ENGINES).map((item) => item.toLowerCase())),
     cobaltApiEndpoints: parseList(process.env.COBALT_API_ENDPOINTS),
     cobaltDirectoryEnabled: parseBoolean(process.env.COBALT_DIRECTORY_ENABLED, false),
