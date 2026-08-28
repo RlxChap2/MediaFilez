@@ -42,6 +42,18 @@ test('uses Reddit embed fallback for short image links', () => {
   ]);
 });
 
+test('lets auto detection use media-aware social extractors first', () => {
+  assert.deepEqual(planEngines('https://www.instagram.com/p/example/', 'auto', settings), [
+    'gallery-dl', 'yt-dlp', 'instagram-proxy', 'cobalt', 'page-metadata',
+  ]);
+  assert.deepEqual(planEngines('https://www.reddit.com/r/discordapp/s/example', 'auto', settings), [
+    'reddit-embed', 'gallery-dl', 'yt-dlp', 'cobalt', 'page-metadata',
+  ]);
+  assert.deepEqual(planEngines('https://cdn.example.com/file.mp3', 'auto', settings), [
+    'direct-http', 'yt-dlp',
+  ]);
+});
+
 test('filters disabled and unconfigured engines', () => {
   const minimal = {
     ...settings,

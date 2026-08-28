@@ -79,10 +79,10 @@ export function planEngines(rawUrl, outputType, settings = config) {
     let names;
     if (source.direct) names = ["direct-http", "yt-dlp"];
     else if (source.youtube) names = ["yt-dlp", "youtube-js", "cobalt", "page-metadata"];
-    else if (source.reddit && ["image", "thumbnail"].includes(outputType)) {
+    else if (source.reddit && ["auto", "image", "thumbnail"].includes(outputType)) {
         names = ["reddit-embed", "gallery-dl", "yt-dlp", "cobalt", "page-metadata"];
     } else if (source.reddit) names = ["cobalt", "yt-dlp", "reddit-embed", "gallery-dl", "page-metadata"];
-    else if (source.instagram && ["image", "thumbnail"].includes(outputType)) {
+    else if (source.instagram && ["auto", "image", "thumbnail"].includes(outputType)) {
         names = ["gallery-dl", "yt-dlp", "instagram-proxy", "cobalt", "page-metadata"];
     } else if (source.instagram) {
         names = ["yt-dlp", "instagram-proxy", "cobalt", "gallery-dl", "page-metadata"];

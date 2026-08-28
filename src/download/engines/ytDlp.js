@@ -7,17 +7,13 @@ import { ProcessExecutionError, runProcess } from "../../utils/process.js";
 import { recoverArtifact } from "../artifact.js";
 import { formatBytes } from "../../utils/format.js";
 import { resolveFFmpegPaths } from "../../utils/ffmpeg.js";
+import { ytDlpFormatSelector } from "../videoQuality.js";
 
 export function resolveYtDlpPath() {
     if (config.ytdlpPath) return config.ytdlpPath;
     const entry = fileURLToPath(import.meta.resolve("youtube-dl-exec"));
     const packageRoot = path.resolve(path.dirname(entry), "..");
     return path.join(packageRoot, "bin", process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp");
-}
-
-function formatSelector(outputType) {
-    if (outputType === "audio") return "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio";
-    return "bv*[vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b";
 }
 
 function cleanError(error) {
@@ -73,6 +69,7 @@ export async function downloadWithYtDlp(rawUrl, attemptDir, options = {}) {
         "--no-config",
         "--no-playlist",
         "--no-warnings",
+        "--newline",
         "--windows-filenames",
         "--trim-filenames",
         "150",
@@ -108,7 +105,7 @@ export async function downloadWithYtDlp(rawUrl, attemptDir, options = {}) {
     if (outputType === "thumbnail" || outputType === "image") {
         args.push("--skip-download", "--write-thumbnail", "--convert-thumbnails", "jpg");
     } else {
-        args.push("--format", formatSelector(outputType));
+        args.push("--format", ytDlpFormatSelector(outputType, options.targetBytes));
         if (outputType !== "audio") args.push("--merge-output-format", "mp4");
     }
     args.push("--", rawUrl);

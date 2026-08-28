@@ -6,6 +6,7 @@ import { DownloadMethodError, userError } from "../../utils/errors.js";
 import { describeFile, makeSafeFileName } from "../../utils/files.js";
 import { formatBytes } from "../../utils/format.js";
 import { downloadDirectHttp } from "./directHttp.js";
+import { preferredVideoHeight } from "../videoQuality.js";
 
 let clientPromise;
 
@@ -81,9 +82,10 @@ export async function downloadWithYouTubeJs(rawUrl, attemptDir, options = {}) {
         const extension = isAudio ? "m4a" : "mp4";
         const fileName = makeSafeFileName(metadata.title, id, extension);
         const filePath = path.join(attemptDir, fileName);
+        const preferredHeight = preferredVideoHeight(options.targetBytes);
         const stream = await info.download({
             type: isAudio ? "audio" : "video+audio",
-            quality: "best",
+            quality: isAudio || !preferredHeight ? "best" : `${preferredHeight}p`,
             format: isAudio ? "any" : "mp4",
         });
         await saveStream(stream, filePath, options.maxBytes ?? config.maxDownloadBytes, options);

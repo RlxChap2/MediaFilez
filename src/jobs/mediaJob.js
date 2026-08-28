@@ -79,6 +79,7 @@ async function runMediaJob(interaction, reply, request) {
         const download = await downloadMedia(request.url, tempDir, {
             outputType: request.outputType,
             maxBytes: config.maxDownloadBytes,
+            targetBytes: uploadTargetBytes,
             signal: controller.signal,
             onStatus: (status) => reply.update(status),
         });
@@ -91,7 +92,7 @@ async function runMediaJob(interaction, reply, request) {
             maxAttachmentBytes: uploadTargetBytes,
             allowCompression: request.fitToLimit,
             signal: controller.signal,
-            onStatus: (status) => reply.update(status, { force: true }),
+            onStatus: (status) => reply.update(status),
         });
         const processMs = performance.now() - processStarted;
         log.info(

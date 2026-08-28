@@ -2,8 +2,9 @@
 
 MediaFilez downloads public media into Discord through one `/media` command. It tries ordered engines, validates every result, fits oversized video to the current interaction limit, and uploads one confirmed attachment.
 
-The command has three output choices:
+The command has four output choices:
 
+- **Auto (detect media)** accepts the first validated video, audio, or image found at the URL and applies the matching processing path.
 - **Video** downloads playable video.
 - **Image / video frame** returns a source image, page thumbnail, or a frame from video.
 - **Audio** downloads or extracts audio.
@@ -12,6 +13,7 @@ The command has three output choices:
 
 ## What changed in 2.1
 
+- `/media` includes an `Auto` output that accepts validated video, audio, or image media and chooses the matching processing path.
 - Local installs include FFmpeg and FFprobe packages. `pnpm install` also fetches a SHA-256 verified gallery-dl build into `.tools` when no operator path is supplied.
 - Instagram has a direct embed-proxy fallback. The default converts `instagram.com` to `kkkinstagram.com`, then downloads the returned media through the same redirect, SSRF, size, and signature checks as any other URL.
 - Unknown pages gain a metadata extractor for Open Graph, Twitter card, and HTML media tags.
@@ -24,14 +26,16 @@ The command has three output choices:
 
 Engine order depends on the host and requested output.
 
+`Auto` starts with the extractor best suited to the host, then falls back through the remaining engines. Direct file URLs use direct HTTP first. Page metadata checks video, audio, and image fields in that order. File signatures and FFprobe streams determine the final media type whenever available, and validation rejects unknown media.
+
 | Source | Default order |
 | --- | --- |
 | Direct media URL | direct HTTP, yt-dlp |
 | YouTube | yt-dlp, YouTube.js, Cobalt, page metadata |
+| Instagram auto or image | gallery-dl, yt-dlp, Instagram proxy, Cobalt, page metadata |
 | Instagram video or audio | yt-dlp, Instagram proxy, Cobalt, gallery-dl, page metadata |
-| Instagram image | gallery-dl, yt-dlp, Instagram proxy, Cobalt, page metadata |
 | Pinterest, Flickr, Imgur | gallery-dl, yt-dlp, Cobalt, page metadata |
-| Reddit image | Reddit embed, gallery-dl, yt-dlp, Cobalt, page metadata |
+| Reddit auto or image | Reddit embed, gallery-dl, yt-dlp, Cobalt, page metadata |
 | Reddit video or audio | Cobalt, yt-dlp, Reddit embed, gallery-dl, page metadata |
 | Other Cobalt services | Cobalt, yt-dlp, gallery-dl, page metadata |
 | Unknown page | yt-dlp, gallery-dl, page metadata, direct HTTP |

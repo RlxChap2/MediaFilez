@@ -49,3 +49,18 @@ test("extracts media content URLs from JSON-LD", () => {
 
     assert.deepEqual(metadata.candidates, ["https://cdn.example.net/assets/clip.mp4"]);
 });
+
+test("auto metadata tries video, audio, then image candidates", () => {
+    const html = `
+        <meta property="og:image" content="https://cdn.example/post.jpg">
+        <meta property="og:audio" content="https://cdn.example/track.mp3">
+        <meta property="og:video" content="https://cdn.example/clip.mp4">
+    `;
+    const metadata = extractPageMetadata(html, new URL("https://example.com/post"), "auto");
+
+    assert.deepEqual(metadata.candidates, [
+        "https://cdn.example/clip.mp4",
+        "https://cdn.example/track.mp3",
+        "https://cdn.example/post.jpg",
+    ]);
+});

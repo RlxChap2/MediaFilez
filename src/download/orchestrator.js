@@ -54,7 +54,7 @@ function publicFailure(attempts, outputType) {
     if (/gallery-dl is unavailable/i.test(messages) && attempts.length === 1) {
         return "gallery-dl is unavailable. Run pnpm run tools:install, set GALLERY_DL_PATH, or use Docker.";
     }
-    if (/contains image media, not video|returned image media/i.test(messages)) {
+    if (outputType !== "auto" && /contains image media, not video|returned image media/i.test(messages)) {
         return "The source is an image. Choose image output and try again.";
     }
     if (/account authentication|cookies|login required|empty media response/i.test(messages)) {
@@ -69,7 +69,8 @@ function publicFailure(attempts, outputType) {
     if (/rate.?limit|too many requests|HTTP 429/i.test(messages)) {
         return "The source or a configured download service is rate-limiting requests. Try again later.";
     }
-    return `No playable ${outputType} came back after trying: ${engines}. The post may be unavailable, expired, or unsupported.`;
+    const outputLabel = outputType === "auto" ? "media" : outputType;
+    return `No playable ${outputLabel} came back after trying: ${engines}. The post may be unavailable, expired, or unsupported.`;
 }
 
 export async function downloadMedia(rawUrl, jobDir, options = {}) {

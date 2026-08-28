@@ -8,6 +8,7 @@ import { config } from "../config.js";
 import { formatBytes } from "./format.js";
 import { userError } from "./errors.js";
 import { log } from "./logger.js";
+import { ProcessExecutionError, runProcess } from "./process.js";
 
 const execFileAsync = promisify(execFile);
 let ffmpegAvailability = null;
@@ -50,7 +51,52 @@ async function runBinary(binary, label, args, options = {}) {
 }
 
 export async function runFFmpeg(args, options = {}) {
-    return await runBinary(resolveFFmpegPaths().ffmpeg, "FFmpeg", ["-hide_banner", ...args], options);
+    if (!options.onProgress) {
+        return await runBinary(resolveFFmpegPaths().ffmpeg, "FFmpeg", ["-hide_banner", ...args], options);
+    }
+
+    const progress = {};
+    const reportProgress = (line) => {
+        const separator = line.indexOf("=");
+        if (separator === -1) return;
+        const key = line.slice(0, separator);
+        const value = line.slice(separator + 1);
+        progress[key] = value;
+        if (key !== "progress") return;
+
+        const processedSeconds = Math.max(0, Number.parseInt(progress.out_time_us || "0", 10) / 1_000_000);
+        const durationSeconds = Number(options.durationSeconds) || null;
+        const percent = durationSeconds
+            ? Math.min(value === "end" ? 100 : 99.9, (processedSeconds / durationSeconds) * 100)
+            : null;
+        options.onProgress({
+            percent,
+            processedSeconds,
+            totalSeconds: durationSeconds,
+            speed: progress.speed || null,
+        });
+    };
+
+    try {
+        return await runProcess(
+            resolveFFmpegPaths().ffmpeg,
+            ["-hide_banner", "-nostats", "-progress", "pipe:1", ...args],
+            {
+                timeoutMs: options.timeoutMs ?? config.ffmpegTimeoutMs,
+                signal: options.signal,
+                onStdoutLine: reportProgress,
+            },
+        );
+    } catch (error) {
+        if (error instanceof ProcessExecutionError && error.aborted) {
+            throw Object.assign(new Error("FFmpeg was cancelled."), { name: "AbortError" });
+        }
+        if (error instanceof ProcessExecutionError && error.timedOut) {
+            throw userError("FFmpeg timed out while processing this file.", "PROCESS_TIMEOUT");
+        }
+        if (error.cause?.code === "ENOENT") throw missingFfmpegError("FFmpeg");
+        throw new Error(`FFmpeg failed: ${error.stderr || error.message}`);
+    }
 }
 
 async function runFFprobe(args, options = {}) {
@@ -275,8 +321,18 @@ async function compressAttempt(inputPath, outputPath, info, targetSizeBytes, sca
     args.push("-movflags", "+faststart", "-y", outputPath);
 
     log.info(`Compressing video to ${videoKbps}k video bitrate.`);
-    await runFFmpeg(args, options);
+    await runFFmpeg(args, { ...options, durationSeconds: info.duration });
     return await fs.stat(outputPath);
+}
+
+function remuxCouldFit(info, targetSizeBytes) {
+    return info.sizeBytes > 0 && info.sizeBytes <= targetSizeBytes * 1.05;
+}
+
+function audioOnlyFitCouldWork(info, targetSizeBytes) {
+    if (!info.hasAudio || !info.videoBitrate || !info.duration) return info.hasAudio;
+    const estimatedVideoBytes = (info.videoBitrate * info.duration) / 8;
+    return estimatedVideoBytes <= targetSizeBytes * 0.98;
 }
 
 export async function compressVideo(inputPath, outputDir, targetSizeBytes, options = {}) {
@@ -294,13 +350,24 @@ export async function compressVideo(inputPath, outputDir, targetSizeBytes, optio
     }
 
     const baseName = path.basename(inputPath, path.extname(inputPath));
-    const remuxed = await tryRemux(inputPath, outputDir, baseName, targetSizeBytes, options);
-    if (remuxed) return remuxed;
+    if (remuxCouldFit(info, targetSizeBytes)) {
+        await options.onStage?.("Trying a lossless container fit");
+        const remuxed = await tryRemux(inputPath, outputDir, baseName, targetSizeBytes, options);
+        if (remuxed) return remuxed;
+    } else {
+        log.info("Skipping lossless remux because the source is far above the upload target.");
+    }
 
-    const audioFit = await tryAudioFit(inputPath, outputDir, baseName, info, targetSizeBytes, options);
-    if (audioFit) return audioFit;
+    if (audioOnlyFitCouldWork(info, targetSizeBytes)) {
+        await options.onStage?.("Trying a fast audio-only fit");
+        const audioFit = await tryAudioFit(inputPath, outputDir, baseName, info, targetSizeBytes, options);
+        if (audioFit) return audioFit;
+    } else {
+        log.info("Skipping audio-only fitting because the copied video stream cannot fit the upload target.");
+    }
 
     const outputPath = path.join(outputDir, `fit-${baseName}.mp4`);
+    await options.onStage?.("Compressing video to fit Discord");
     let stat = await compressAttempt(inputPath, outputPath, info, targetSizeBytes, 0.92, options);
 
     if (stat.size > targetSizeBytes) {

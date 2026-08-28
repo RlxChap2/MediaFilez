@@ -73,6 +73,7 @@ function wrappedUrlCandidates(baseUrl) {
 
 function jsonLdCandidates(html, baseUrl, outputType) {
     const acceptedKeys = {
+        auto: new Set(["contenturl", "embedurl", "thumbnailurl"]),
         video: new Set(["contenturl", "embedurl"]),
         audio: new Set(["contenturl"]),
         image: new Set(["contenturl", "thumbnailurl"]),
@@ -119,15 +120,17 @@ export function extractPageMetadata(html, baseUrl, outputType) {
         if (src) inlineMedia.push(src);
     }
 
-    const keys = {
+    const keysByType = {
         video: ["og:video:secure_url", "og:video:url", "og:video", "twitter:player:stream"],
         audio: ["og:audio:secure_url", "og:audio:url", "og:audio"],
         image: ["og:image:secure_url", "og:image:url", "og:image", "twitter:image", "twitter:image:src"],
         thumbnail: ["og:image:secure_url", "og:image:url", "og:image", "twitter:image", "twitter:image:src"],
-    }[outputType] ?? [];
+    };
+    const selectedTypes = outputType === "auto" ? ["video", "audio", "image"] : [outputType];
+    const keys = selectedTypes.flatMap((type) => keysByType[type] ?? []);
 
     const rawCandidates = [...keys.flatMap((key) => values.get(key) ?? [])];
-    if (["video", "audio"].includes(outputType)) rawCandidates.push(...inlineMedia);
+    if (["auto", "video", "audio"].includes(outputType)) rawCandidates.push(...inlineMedia);
 
     const candidates = [...wrappedUrlCandidates(baseUrl), ...jsonLdCandidates(html, baseUrl, outputType)];
     for (const value of rawCandidates) addUrl(candidates, value, baseUrl);
@@ -162,6 +165,7 @@ async function readPage(response, maxBytes) {
 }
 
 function expectedKind(outputType, mediaKind) {
+    if (outputType === "auto") return ["video", "audio", "image"].includes(mediaKind);
     if (outputType === "video") return mediaKind === "video";
     if (outputType === "audio") return mediaKind === "audio";
     return ["image", "video"].includes(mediaKind);
