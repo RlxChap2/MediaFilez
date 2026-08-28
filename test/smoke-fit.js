@@ -27,11 +27,11 @@ try {
     const download = await downloadMedia(url, tempDir, {
         maxBytes: 500 * MB,
         targetBytes: maxAttachmentBytes,
-        outputType: "video",
+        outputType: "auto",
         onStatus: reportStatus,
     });
     const output = await prepareMediaForDiscord(download, {
-        outputType: "video",
+        outputType: "auto",
         tempDir,
         maxAttachmentBytes,
         allowCompression: true,

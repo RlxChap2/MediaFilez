@@ -84,6 +84,7 @@ function requireSuccessfulResponse(response) {
 }
 
 function acceptsMediaKind(outputType, mediaKind) {
+    if (outputType === "auto") return ["video", "audio", "image"].includes(mediaKind);
     if (outputType === "video") return mediaKind === "video";
     if (outputType === "audio") return mediaKind !== "image";
     return ["image", "video"].includes(mediaKind);

@@ -37,6 +37,27 @@ test('stops after the first valid engine result', async (t) => {
   assert.equal(result.method, 'first');
 });
 
+test('auto accepts the first recognized media kind', async (t) => {
+  const jobDir = await tempJob();
+  t.after(() => fs.rm(jobDir, { recursive: true, force: true }));
+  const engines = new Map([
+    ['detector', async (_url, attemptDir) => {
+      const filePath = path.join(attemptDir, 'detected.png');
+      await fs.writeFile(filePath, PNG);
+      return { filePath, fileName: 'detected.png', method: 'detector' };
+    }],
+  ]);
+
+  const result = await downloadMedia('https://example.com/post', jobDir, {
+    outputType: 'auto',
+    plan: ['detector'],
+    engines,
+  });
+
+  assert.equal(result.mediaKind, 'image');
+  assert.equal(result.method, 'detector');
+});
+
 test('recovers a complete artifact after an engine error and stops fallback', async (t) => {
   const jobDir = await tempJob();
   t.after(() => fs.rm(jobDir, { recursive: true, force: true }));
@@ -135,5 +156,25 @@ test('reports an image post before generic network failures', async (t) => {
       engines,
     }),
     (error) => /source is an image.*choose image output/i.test(error.message),
+  );
+});
+
+test('auto does not tell the user to switch to image output', async (t) => {
+  const jobDir = await tempJob();
+  t.after(() => fs.rm(jobDir, { recursive: true, force: true }));
+  const engines = new Map([
+    ['blocked', async () => { throw new Error('HTTP Error 403: Forbidden'); }],
+    ['reddit-embed', async () => {
+      throw new DownloadMethodError('reddit-embed', 'The Reddit post contains image media, not video.');
+    }],
+  ]);
+
+  await assert.rejects(
+    downloadMedia('https://www.reddit.com/r/example/comments/abc/post', jobDir, {
+      outputType: 'auto',
+      plan: ['blocked', 'reddit-embed'],
+      engines,
+    }),
+    (error) => /blocked automated access/.test(error.message) && !/choose image output/i.test(error.message),
   );
 });

@@ -10,10 +10,11 @@ try {
   tempDir = await createRequestTempDir();
   const result = await downloadMedia(url, tempDir, {
     maxBytes: Math.min(config.maxDownloadBytes, 10 * MB),
-    outputType: 'image',
+    targetBytes: 10 * MB,
+    outputType: 'auto',
   });
 
-  console.log(`Downloaded ${result.fileName} (${formatBytes(result.sizeBytes)}) via ${result.method}.`);
+  console.log(`Detected ${result.mediaKind}: ${result.fileName} (${formatBytes(result.sizeBytes)}) via ${result.method}.`);
 } finally {
   await cleanupTempDir(tempDir);
 }

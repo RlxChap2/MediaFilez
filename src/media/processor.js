@@ -22,7 +22,11 @@ function ensureFits(file, maxAttachmentBytes, outputType) {
 }
 
 export async function prepareMediaForDiscord(download, options) {
-  const { outputType, tempDir, maxAttachmentBytes, allowCompression, onStatus, signal } = options;
+  const { outputType: requestedOutputType, tempDir, maxAttachmentBytes, allowCompression, onStatus, signal } = options;
+  const outputType = requestedOutputType === 'auto' ? download.mediaKind : requestedOutputType;
+  if (!['video', 'audio', 'image', 'thumbnail'].includes(outputType)) {
+    throw userError('The downloaded file type could not be detected as video, audio, or image.', 'UNSUPPORTED_MEDIA');
+  }
   let outputPath = download.filePath;
   let outputName = download.fileName;
   let note = null;

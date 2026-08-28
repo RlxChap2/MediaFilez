@@ -6,7 +6,7 @@ import test from 'node:test';
 import { prepareMediaForDiscord } from '../../src/media/processor.js';
 import { checkFFmpeg, runFFmpeg } from '../../src/utils/ffmpeg.js';
 
-test('fits low-bitrate video and reports transcoding progress', async (t) => {
+test('auto fits low-bitrate video and reports transcoding progress', async (t) => {
   if (!await checkFFmpeg()) return t.skip('FFmpeg is not installed.');
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mediafilez-fit-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
@@ -27,7 +27,7 @@ test('fits low-bitrate video and reports transcoding progress', async (t) => {
     mediaKind: 'video',
     extension: 'mp4',
   }, {
-    outputType: 'video',
+    outputType: 'auto',
     tempDir: dir,
     maxAttachmentBytes: targetSize,
     allowCompression: true,

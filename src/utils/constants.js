@@ -5,7 +5,7 @@ export const FILE_LIMITS = {
   MAX_DOWNLOAD: DISCORD_HARD_MAX_BYTES,
 };
 
-export const OUTPUT_TYPES = new Set(['video', 'image', 'thumbnail', 'audio']);
+export const OUTPUT_TYPES = new Set(['auto', 'video', 'image', 'thumbnail', 'audio']);
 
 export const SUPPORTED_VIDEO = new Set(['.mp4', '.webm', '.mov', '.avi', '.mkv', '.flv', '.wmv', '.m4v', '.3gp']);
 export const SUPPORTED_IMAGE = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp', '.tiff', '.avif']);
