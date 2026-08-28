@@ -47,6 +47,23 @@ const COBALT_HOSTS = new Set([
     "streamable.com",
     "www.streamable.com",
     "vk.com",
+    "bilibili.com",
+    "www.bilibili.com",
+    "b23.tv",
+    "dailymotion.com",
+    "www.dailymotion.com",
+    "dai.ly",
+    "loom.com",
+    "www.loom.com",
+    "newgrounds.com",
+    "www.newgrounds.com",
+    "ok.ru",
+    "www.ok.ru",
+    "rutube.ru",
+    "www.rutube.ru",
+    "twitch.tv",
+    "www.twitch.tv",
+    "clips.twitch.tv",
 ]);
 const DIRECT_EXTENSIONS = new Set([
     ".mp4",
@@ -84,7 +101,7 @@ export function classifySource(rawUrl) {
 export function planEngines(rawUrl, outputType, settings = config) {
     const source = classifySource(rawUrl);
     let names;
-    if (source.direct) names = ["direct-http", "yt-dlp"];
+    if (source.direct) names = ["direct-http"];
     else if (source.youtube) names = ["yt-dlp", "youtube-js", "cobalt", "page-metadata"];
     else if (source.reddit && ["auto", "image", "thumbnail"].includes(outputType)) {
         names = ["reddit-embed", "reddit-proxy", "gallery-dl", "yt-dlp", "cobalt", "page-metadata"];
@@ -96,7 +113,7 @@ export function planEngines(rawUrl, outputType, settings = config) {
         names = ["yt-dlp", "instagram-proxy", "cobalt", "gallery-dl", "page-metadata"];
     } else if (source.gallery) names = ["gallery-dl", "yt-dlp", "cobalt", "page-metadata"];
     else if (source.cobalt) names = ["cobalt", "yt-dlp", "gallery-dl", "page-metadata"];
-    else names = ["yt-dlp", "gallery-dl", "page-metadata", "direct-http"];
+    else names = ["page-metadata", "direct-http"];
 
     return names.filter((name) => {
         if (settings.disabledEngines?.has(name)) return false;

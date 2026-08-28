@@ -41,13 +41,20 @@ function processMessage(error) {
   return lines.findLast((line) => /error|failed|unsupported/i.test(line)) || lines.at(-1) || error.message;
 }
 
-export async function downloadWithGalleryDl(rawUrl, attemptDir, options = {}) {
+export function galleryDlArgs(rawUrl, attemptDir, options = {}) {
+  const maxBytes = options.maxBytes ?? config.maxDownloadBytes;
   const args = [
     '--no-input', '--no-colors', '--directory', attemptDir, '--range', '1',
     '--write-metadata', '--write-info-json', '--retries', '3', '--http-timeout', '30',
+    '--filesize-max', String(maxBytes),
     '--filename', '{title[:120]}_{id}.{extension}', '--', rawUrl,
   ];
   if (config.mediaCookiesFile) args.unshift('--cookies', config.mediaCookiesFile);
+  return args;
+}
+
+export async function downloadWithGalleryDl(rawUrl, attemptDir, options = {}) {
+  const args = galleryDlArgs(rawUrl, attemptDir, options);
 
   let processError = null;
   try {

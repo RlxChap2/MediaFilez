@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import dns from 'node:dns';
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import net from 'node:net';
@@ -97,4 +98,33 @@ test('turns an incomplete socket close into an engine failure and removes the pa
     (error) => error instanceof DownloadMethodError && /closed|socket|terminated|aborted|ECONNRESET/i.test(error.message),
   );
   assert.deepEqual(await fs.readdir(dir), []);
+});
+
+test('stops fallback when socket DNS changes to a private address', async (t) => {
+  const originalLookup = dns.lookup;
+  const originalPromiseLookup = dns.promises.lookup;
+  dns.promises.lookup = async (hostname, options) => hostname === 'rebind.example'
+    ? [{ address: '93.184.216.34', family: 4 }]
+    : await originalPromiseLookup(hostname, options);
+  dns.lookup = (hostname, options, callback) => {
+    if (hostname === 'rebind.example') {
+      callback(null, [{ address: '127.0.0.1', family: 4 }]);
+      return;
+    }
+    originalLookup(hostname, options, callback);
+  };
+  t.after(() => {
+    dns.lookup = originalLookup;
+    dns.promises.lookup = originalPromiseLookup;
+  });
+
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'mediafilez-http-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  await assert.rejects(
+    downloadDirectHttp('http://rebind.example/image.png', dir, {
+      maxBytes: 1024,
+      responseTimeoutMs: 100,
+    }),
+    (error) => error.code === 'PRIVATE_URL' && error.stopFallback === true,
+  );
 });

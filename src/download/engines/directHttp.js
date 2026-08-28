@@ -73,6 +73,14 @@ function isConnectionCloseError(error) {
     return error.cause && error.cause !== error ? isConnectionCloseError(error.cause) : false;
 }
 
+function hasErrorCode(error, code, seen = new Set()) {
+    if (!error || seen.has(error)) return false;
+    seen.add(error);
+    if (error.code === code) return true;
+    if (hasErrorCode(error.cause, code, seen)) return true;
+    return Array.isArray(error.errors) && error.errors.some((item) => hasErrorCode(item, code, seen));
+}
+
 function responseHeader(response, name) {
     const value = response.headers[name.toLowerCase()];
     return Array.isArray(value) ? value[0] : value ?? null;
@@ -110,12 +118,23 @@ export async function openPublicHttpResponse(rawUrl, options = {}) {
     const trusted = new Set(trustedHosts.map((host) => host.toLowerCase()));
 
     for (let redirect = 0; redirect <= 5; redirect += 1) {
-        const response = await requestMedia(current, {
-            signal: options.signal,
-            trustedHosts: trusted,
-            referer: options.referer,
-            headers: options.headers,
-        });
+        let response;
+        try {
+            response = await requestMedia(current, {
+                signal: options.signal,
+                trustedHosts: trusted,
+                referer: options.referer,
+                headers: options.headers,
+            });
+        } catch (error) {
+            if (hasErrorCode(error, "ERR_PRIVATE_ADDRESS")) {
+                throw userError("Local or private network URLs are not allowed.", "PRIVATE_URL", {
+                    stopFallback: true,
+                    cause: error,
+                });
+            }
+            throw error;
+        }
         if (!REDIRECTS.has(response.statusCode)) return { response, finalUrl: current };
         response.destroy();
         const location = responseHeader(response, "location");

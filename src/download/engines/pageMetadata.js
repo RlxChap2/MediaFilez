@@ -1,36 +1,14 @@
 import fs from "node:fs/promises";
 import { config } from "../../config.js";
 import { DownloadMethodError } from "../../utils/errors.js";
+import { decodeHtmlEntities } from "../../utils/htmlEntities.js";
 import { downloadDirectHttp, openPublicHttpResponse } from "./directHttp.js";
-
-function decodeHtml(value) {
-    return value
-        .replace(/&amp;/gi, "&")
-        .replace(/&quot;/gi, '"')
-        .replace(/&#39;|&apos;/gi, "'")
-        .replace(/&lt;/gi, "<")
-        .replace(/&gt;/gi, ">")
-        .replace(/&#(\d+);/g, (match, code) => {
-            try {
-                return String.fromCodePoint(Number(code));
-            } catch {
-                return match;
-            }
-        })
-        .replace(/&#x([\da-f]+);/gi, (match, code) => {
-            try {
-                return String.fromCodePoint(Number.parseInt(code, 16));
-            } catch {
-                return match;
-            }
-        });
-}
 
 function attributes(tag) {
     const result = new Map();
     const pattern = /([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/g;
     for (const match of tag.matchAll(pattern)) {
-        result.set(match[1].toLowerCase(), decodeHtml(match[2] ?? match[3] ?? match[4] ?? ""));
+        result.set(match[1].toLowerCase(), decodeHtmlEntities(match[2] ?? match[3] ?? match[4] ?? ""));
     }
     return result;
 }
@@ -99,7 +77,7 @@ function jsonLdCandidates(html, baseUrl, outputType) {
 
     for (const match of html.matchAll(/<script\b[^>]*type\s*=\s*(?:"application\/ld\+json"|'application\/ld\+json'|application\/ld\+json)[^>]*>([\s\S]*?)<\/script\s*>/gi)) {
         try {
-            visit(JSON.parse(decodeHtml(match[1]).trim()));
+            visit(JSON.parse(decodeHtmlEntities(match[1]).trim()));
         } catch {
             continue;
         }

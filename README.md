@@ -19,6 +19,8 @@ The command has four output choices:
 - Unknown pages gain a metadata extractor for Open Graph, Twitter card, and HTML media tags.
 - Share-link wrappers and JSON-LD `contentUrl` fields feed the guarded direct downloader. Reddit posts first use the first-party embed path, then a configurable public embed relay when Reddit blocks the bot server's address.
 - Multiple Cobalt endpoints rotate across jobs. A failed endpoint enters a short cooldown so every queued job does not wait on the same dead host.
+- Cobalt now covers its full documented host set in the planner and requests a target-aware video quality instead of always requesting the largest source.
+- External downloaders run only for recognized public platforms. Unknown pages and direct links stay inside the DNS-, redirect-, and byte-guarded HTTP engines, and gallery-dl enforces the byte ceiling during transfer.
 - The queue accepts four jobs by default and two jobs per user. Both values remain configurable.
 - Discord's `attachmentSizeLimit` is now the normal upload target. The old 7 MiB ceiling is gone.
 
@@ -30,7 +32,7 @@ Engine order depends on the host and requested output.
 
 | Source | Default order |
 | --- | --- |
-| Direct media URL | direct HTTP, yt-dlp |
+| Direct media URL | direct HTTP |
 | YouTube | yt-dlp, YouTube.js, Cobalt, page metadata |
 | Instagram auto or image | gallery-dl, yt-dlp, Instagram proxy, Cobalt, page metadata |
 | Instagram video or audio | yt-dlp, Instagram proxy, Cobalt, gallery-dl, page metadata |
@@ -38,11 +40,11 @@ Engine order depends on the host and requested output.
 | Reddit auto or image | Reddit embed, Reddit proxy, gallery-dl, yt-dlp, Cobalt, page metadata |
 | Reddit video or audio | Cobalt, yt-dlp, Reddit embed, Reddit proxy, gallery-dl, page metadata |
 | Other Cobalt services | Cobalt, yt-dlp, gallery-dl, page metadata |
-| Unknown page | yt-dlp, gallery-dl, page metadata, direct HTTP |
+| Unknown page | page metadata, direct HTTP |
 
 Each engine writes into its own attempt directory. MediaFilez checks file signatures and FFprobe streams before committing a result. A fallback starts only after the prior attempt stops and leaves no valid file. A process error does not discard a complete file left behind.
 
-The catch-all engines cover many sites, including Pinterest, but no downloader can guarantee every website. Sites change markup, expire media URLs, block data-center addresses, require fresh cookies, or remove extractor access. See the current [yt-dlp supported sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md) and [gallery-dl supported sites](https://github.com/mikf/gallery-dl/blob/master/docs/supportedsites.md).
+The platform engines cover many sites, including Pinterest, while unknown pages can still expose media through standard page metadata or direct HTTP. No downloader can guarantee every website: sites change markup, expire media URLs, block data-center addresses, require fresh cookies, or remove extractor access. See the current [yt-dlp supported sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md) and [gallery-dl supported sites](https://github.com/mikf/gallery-dl/blob/master/docs/supportedsites.md).
 
 ## Requirements
 

@@ -33,7 +33,7 @@ interaction
 
 `planner.js` classifies only routing hints. A host list does not claim support. The adapter still has to return media that passes validation.
 
-Specific extractors run before generic page metadata. Direct URLs avoid HTML resolution. Instagram can use a configured host-rewrite relay after yt-dlp. Pinterest and other gallery hosts prefer gallery-dl. Reddit image posts prefer its public embed surface when normal pages block data-center addresses. Cobalt appears only when an endpoint or opt-in directory exists.
+Specific extractors run before generic page metadata. Direct URLs avoid HTML resolution. Instagram can use a configured host-rewrite relay after yt-dlp. Pinterest and other gallery hosts prefer gallery-dl. Reddit image posts prefer its public embed surface when normal pages block data-center addresses. Cobalt appears only when an endpoint or opt-in directory exists. Unknown hosts remain on the internal page-metadata and direct-HTTP adapters; subprocess downloaders are limited to recognized platform routes.
 
 An engine name can appear once in a plan. `DISABLED_ENGINES` removes it before any attempt directory is created.
 
@@ -85,6 +85,6 @@ Docker sets system FFmpeg paths and installs gallery-dl into its own Python envi
 
 Initial URLs and every direct HTTP redirect resolve through public-address checks. Direct connections use the guarded DNS lookup again when opening the socket, reducing DNS-rebinding exposure. Trusted Cobalt hosts may be private because Compose uses an internal network; URLs returned by Cobalt receive public checks unless they point back to that configured host.
 
-Child processes use argument arrays and `shell: false`. Filenames pass through sanitization. Stream byte counts enforce the maximum even when a server omits or lies about `Content-Length`.
+Child processes use argument arrays and `shell: false`. Filenames pass through sanitization. Stream byte counts enforce the maximum even when a server omits or lies about `Content-Length`; gallery-dl also receives the same limit before it begins a transfer.
 
 Cookie files, relay URLs, Cobalt credentials, Discord tokens, and signed CDN URLs stay out of logs and source control.
