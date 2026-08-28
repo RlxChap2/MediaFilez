@@ -34,8 +34,13 @@ export async function prepareMediaForDiscord(download, options) {
         throw userError(`The video is ${formatBytes(download.sizeBytes)}, above the ${formatBytes(maxAttachmentBytes)} upload target.`, 'FILE_TOO_LARGE');
       }
       await requireFFmpeg('video fitting');
-      await onStatus?.({ phase: 'processing', detail: 'Fitting the video to a reliable Discord upload size' });
-      outputPath = await compressVideo(download.filePath, tempDir, Math.floor(maxAttachmentBytes * 0.98), { signal });
+      const fittingDetail = 'Fitting the video to a reliable Discord upload size';
+      await onStatus?.({ phase: 'processing', detail: fittingDetail });
+      outputPath = await compressVideo(download.filePath, tempDir, Math.floor(maxAttachmentBytes * 0.98), {
+        signal,
+        onStage: (detail) => onStatus?.({ phase: 'processing', detail }),
+        onProgress: (progress) => onStatus?.({ phase: 'processing', detail: 'Compressing video to fit Discord', progress }),
+      });
       outputName = makeSafeFileName(`fit-${download.fileName}`, 'video', 'mp4');
       note = 'transcoded to fit Discord';
     }

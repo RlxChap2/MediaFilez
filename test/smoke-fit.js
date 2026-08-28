@@ -26,6 +26,7 @@ try {
     tempDir = await createRequestTempDir();
     const download = await downloadMedia(url, tempDir, {
         maxBytes: 500 * MB,
+        targetBytes: maxAttachmentBytes,
         outputType: "video",
         onStatus: reportStatus,
     });
