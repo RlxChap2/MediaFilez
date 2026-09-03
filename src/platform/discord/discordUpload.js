@@ -119,6 +119,13 @@ function responsePromiseFor(request) {
     });
 }
 
+function settle(promise) {
+    return promise.then(
+        (value) => ({ status: "fulfilled", value }),
+        (reason) => ({ status: "rejected", reason }),
+    );
+}
+
 export function createDiscordUploader(options = {}) {
     const apiBaseUrl = normalizeApiBaseUrl(options.apiBaseUrl ?? DISCORD_API_BASE_URL);
     const timeoutMs = options.timeoutMs ?? config.discordRestTimeoutMs;
@@ -157,21 +164,32 @@ export function createDiscordUploader(options = {}) {
                 "User-Agent": config.userAgent,
             },
         });
-        const responsePromise = responsePromiseFor(request);
-
         async function* body() {
             yield prefix;
             yield* fs.createReadStream(payload.filePath);
             yield suffix;
         }
 
-        try {
-            await pipeline(Readable.from(body()), request, { signal });
-        } catch (error) {
-            responsePromise.catch(() => {});
-            throw error;
+        const bodyStream = Readable.from(body());
+        const responseOutcomePromise = settle(responsePromiseFor(request));
+        const uploadOutcomePromise = settle(pipeline(bodyStream, request, { signal }));
+        const first = await Promise.race([
+            uploadOutcomePromise.then((outcome) => ({ source: "upload", outcome })),
+            responseOutcomePromise.then((outcome) => ({ source: "response", outcome })),
+        ]);
+
+        if (first.source === "response" && !request.writableFinished) {
+            bodyStream.destroy();
+            request.destroy();
+            await uploadOutcomePromise;
         }
-        return await responsePromise;
+
+        const uploadOutcome = first.source === "upload" ? first.outcome : await uploadOutcomePromise;
+        const responseOutcome = first.source === "response" ? first.outcome : await responseOutcomePromise;
+        if (responseOutcome.status === "fulfilled") return responseOutcome.value;
+        if (responseOutcome.reason instanceof DiscordUploadError) throw responseOutcome.reason;
+        if (uploadOutcome.status === "rejected") throw uploadOutcome.reason;
+        throw responseOutcome.reason;
     };
 }
 

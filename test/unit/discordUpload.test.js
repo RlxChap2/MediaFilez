@@ -116,3 +116,33 @@ test("returns bounded Discord API errors without exposing the interaction token"
         },
     );
 });
+
+test("preserves retry metadata when Discord rejects an upload before reading it", async (t) => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-upload-"));
+    const filePath = path.join(dir, "large.bin");
+    const handle = await fs.open(filePath, "w");
+    await handle.truncate(64 * 1024 * 1024);
+    await handle.close();
+    t.after(() => fs.rm(dir, { recursive: true, force: true }));
+
+    const server = http.createServer((_request, response) => {
+        response.writeHead(429, { "content-type": "application/json", "retry-after": "2" });
+        response.end('{"message":"rate limited","retry_after":2}');
+    });
+    const port = await listen(server);
+    t.after(() => close(server));
+
+    const upload = createDiscordUploader({ apiBaseUrl: `http://127.0.0.1:${port}/api/v10/` });
+    await assert.rejects(
+        upload(
+            { applicationId: "123456789", token: "secret-token" },
+            { content: "Ready", filePath, fileName: "large.bin", sizeBytes: 64 * 1024 * 1024 },
+        ),
+        (error) => {
+            assert.equal(error.status, 429);
+            assert.equal(error.retryAfterMs, 2_000);
+            assert.doesNotMatch(error.message, /secret-token/);
+            return true;
+        },
+    );
+});
