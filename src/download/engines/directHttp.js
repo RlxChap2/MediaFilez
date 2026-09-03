@@ -83,7 +83,7 @@ function hasErrorCode(error, code, seen = new Set()) {
 
 function responseHeader(response, name) {
     const value = response.headers[name.toLowerCase()];
-    return Array.isArray(value) ? value[0] : value ?? null;
+    return Array.isArray(value) ? value[0] : (value ?? null);
 }
 
 function requestMedia(url, options) {

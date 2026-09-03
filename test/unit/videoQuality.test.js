@@ -17,12 +17,6 @@ test("yt-dlp prefers a capped AVC source before falling back to best quality", (
 });
 
 test("audio and large uploads keep their existing best-quality selectors", () => {
-    assert.equal(
-        ytDlpFormatSelector("audio", 10 * MB),
-        "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",
-    );
-    assert.equal(
-        ytDlpFormatSelector("video", 200 * MB),
-        "bv*[vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b",
-    );
+    assert.equal(ytDlpFormatSelector("audio", 10 * MB), "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio");
+    assert.equal(ytDlpFormatSelector("video", 200 * MB), "bv*[vcodec^=avc1]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b");
 });

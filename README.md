@@ -30,17 +30,17 @@ Engine order depends on the host and requested output.
 
 `Auto` starts with the extractor best suited to the host, then falls back through the remaining engines. Direct file URLs use direct HTTP first. Page metadata checks video, audio, and image fields in that order. File signatures and FFprobe streams determine the final media type whenever available, and validation rejects unknown media.
 
-| Source | Default order |
-| --- | --- |
-| Direct media URL | direct HTTP |
-| YouTube | yt-dlp, YouTube.js, Cobalt, page metadata |
-| Instagram auto or image | gallery-dl, yt-dlp, Instagram proxy, Cobalt, page metadata |
-| Instagram video or audio | yt-dlp, Instagram proxy, Cobalt, gallery-dl, page metadata |
-| Pinterest, Flickr, Imgur | gallery-dl, yt-dlp, Cobalt, page metadata |
-| Reddit auto or image | Reddit embed, Reddit proxy, gallery-dl, yt-dlp, Cobalt, page metadata |
-| Reddit video or audio | Cobalt, yt-dlp, Reddit embed, Reddit proxy, gallery-dl, page metadata |
-| Other Cobalt services | Cobalt, yt-dlp, gallery-dl, page metadata |
-| Unknown page | page metadata, direct HTTP |
+| Source                   | Default order                                                         |
+| ------------------------ | --------------------------------------------------------------------- |
+| Direct media URL         | direct HTTP                                                           |
+| YouTube                  | yt-dlp, YouTube.js, Cobalt, page metadata                             |
+| Instagram auto or image  | gallery-dl, yt-dlp, Instagram proxy, Cobalt, page metadata            |
+| Instagram video or audio | yt-dlp, Instagram proxy, Cobalt, gallery-dl, page metadata            |
+| Pinterest, Flickr, Imgur | gallery-dl, yt-dlp, Cobalt, page metadata                             |
+| Reddit auto or image     | Reddit embed, Reddit proxy, gallery-dl, yt-dlp, Cobalt, page metadata |
+| Reddit video or audio    | Cobalt, yt-dlp, Reddit embed, Reddit proxy, gallery-dl, page metadata |
+| Other Cobalt services    | Cobalt, yt-dlp, gallery-dl, page metadata                             |
+| Unknown page             | page metadata, direct HTTP                                            |
 
 Each engine writes into its own attempt directory. MediaFilez checks file signatures and FFprobe streams before committing a result. A fallback starts only after the prior attempt stops and leaves no valid file. A process error does not discard a complete file left behind.
 
@@ -126,11 +126,11 @@ yt-dlp and gallery-dl share this file. Mount it read-only on a server and never 
 
 ```yaml
 services:
-  mediafilez:
-    environment:
-      MEDIA_COOKIES_FILE: /run/secrets/media-cookies.txt
-    volumes:
-      - ./secrets/media-cookies.txt:/run/secrets/media-cookies.txt:ro
+    mediafilez:
+        environment:
+            MEDIA_COOKIES_FILE: /run/secrets/media-cookies.txt
+        volumes:
+            - ./secrets/media-cookies.txt:/run/secrets/media-cookies.txt:ro
 ```
 
 `YTDLP_COOKIES_FROM_BROWSER` is useful for local diagnosis. A cookie file works better on servers because browsers may lock their databases and Windows DPAPI ties decryption to a user session.
@@ -139,26 +139,26 @@ MediaFilez does not bypass private-account permissions, paywalls, DRM, or remove
 
 ## Main configuration
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `MAX_DOWNLOAD_SIZE` | `500mb` | Maximum source artifact before processing |
-| `MAX_CONCURRENT_JOBS` | `4` | Jobs running at once |
-| `MAX_QUEUE_SIZE` | `50` | Waiting jobs before backpressure rejects work |
-| `MAX_CONCURRENT_JOBS_PER_USER` | `2` | Per-user running or queued job cap |
-| `DISCORD_UPLOAD_TARGET_SIZE` | `500mb` | Operator ceiling; the interaction limit can lower it |
-| `DISCORD_UPLOAD_ATTEMPTS` | `3` | Verified attachment upload attempts |
-| `JOB_TIMEOUT_MS` | `840000` | Whole-job timeout below Discord's token lifetime |
-| `YTDLP_CONCURRENT_FRAGMENTS` | `4` | Fragment transfers inside one yt-dlp attempt |
-| `YTDLP_IMPERSONATE` | disabled | Optional yt-dlp impersonation target; enable only when `yt-dlp --list-impersonate-targets` reports it as available |
-| `FFMPEG_THREADS` | `2` | Encoder threads per fitting job |
-| `GALLERY_DL_ENABLED` | `true` | Enables gallery and image extraction |
-| `PAGE_METADATA_ENABLED` | `true` | Enables generic page metadata extraction |
-| `PAGE_METADATA_MAX_SIZE` | `1mb` | Maximum HTML read by the metadata engine |
-| `INSTAGRAM_PROXY_HOSTS` | `www.kkkinstagram.com` | Ordered public Instagram relay hosts; use `none` to disable |
-| `REDDIT_PROXY_HOSTS` | `redditez.com` | Ordered public Reddit embed relay hosts; use `none` to disable |
-| `COBALT_API_ENDPOINTS` | empty | Operator-authorized instances; Compose supplies its two internal Cobalt endpoints |
-| `COBALT_DIRECTORY_ENABLED` | `false` | Opt in to tested, Turnstile-free third-party instances from cobalt.directory |
-| `DISABLED_ENGINES` | empty | Engine names removed from every plan |
+| Variable                       | Default                | Purpose                                                                                                            |
+| ------------------------------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `MAX_DOWNLOAD_SIZE`            | `500mb`                | Maximum source artifact before processing                                                                          |
+| `MAX_CONCURRENT_JOBS`          | `4`                    | Jobs running at once                                                                                               |
+| `MAX_QUEUE_SIZE`               | `50`                   | Waiting jobs before backpressure rejects work                                                                      |
+| `MAX_CONCURRENT_JOBS_PER_USER` | `2`                    | Per-user running or queued job cap                                                                                 |
+| `DISCORD_UPLOAD_TARGET_SIZE`   | `500mb`                | Operator ceiling; the interaction limit can lower it                                                               |
+| `DISCORD_UPLOAD_ATTEMPTS`      | `3`                    | Verified attachment upload attempts                                                                                |
+| `JOB_TIMEOUT_MS`               | `840000`               | Whole-job timeout below Discord's token lifetime                                                                   |
+| `YTDLP_CONCURRENT_FRAGMENTS`   | `4`                    | Fragment transfers inside one yt-dlp attempt                                                                       |
+| `YTDLP_IMPERSONATE`            | disabled               | Optional yt-dlp impersonation target; enable only when `yt-dlp --list-impersonate-targets` reports it as available |
+| `FFMPEG_THREADS`               | `2`                    | Encoder threads per fitting job                                                                                    |
+| `GALLERY_DL_ENABLED`           | `true`                 | Enables gallery and image extraction                                                                               |
+| `PAGE_METADATA_ENABLED`        | `true`                 | Enables generic page metadata extraction                                                                           |
+| `PAGE_METADATA_MAX_SIZE`       | `1mb`                  | Maximum HTML read by the metadata engine                                                                           |
+| `INSTAGRAM_PROXY_HOSTS`        | `www.kkkinstagram.com` | Ordered public Instagram relay hosts; use `none` to disable                                                        |
+| `REDDIT_PROXY_HOSTS`           | `redditez.com`         | Ordered public Reddit embed relay hosts; use `none` to disable                                                     |
+| `COBALT_API_ENDPOINTS`         | empty                  | Operator-authorized instances; Compose supplies its two internal Cobalt endpoints                                  |
+| `COBALT_DIRECTORY_ENABLED`     | `false`                | Opt in to tested, Turnstile-free third-party instances from cobalt.directory                                       |
+| `DISABLED_ENGINES`             | empty                  | Engine names removed from every plan                                                                               |
 
 `.env.example` contains timeout, upload retry, path override, cookie, and Cobalt settings.
 

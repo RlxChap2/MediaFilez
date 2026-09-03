@@ -50,13 +50,14 @@ function wrappedUrlCandidates(baseUrl) {
 }
 
 function jsonLdCandidates(html, baseUrl, outputType) {
-    const acceptedKeys = {
-        auto: new Set(["contenturl", "embedurl", "thumbnailurl"]),
-        video: new Set(["contenturl", "embedurl"]),
-        audio: new Set(["contenturl"]),
-        image: new Set(["contenturl", "thumbnailurl"]),
-        thumbnail: new Set(["contenturl", "thumbnailurl"]),
-    }[outputType] ?? new Set();
+    const acceptedKeys =
+        {
+            auto: new Set(["contenturl", "embedurl", "thumbnailurl"]),
+            video: new Set(["contenturl", "embedurl"]),
+            audio: new Set(["contenturl"]),
+            image: new Set(["contenturl", "thumbnailurl"]),
+            thumbnail: new Set(["contenturl", "thumbnailurl"]),
+        }[outputType] ?? new Set();
     const candidates = [];
     let visitedValues = 0;
 
@@ -75,7 +76,9 @@ function jsonLdCandidates(html, baseUrl, outputType) {
         for (const [childKey, childValue] of Object.entries(value)) visit(childValue, childKey, depth + 1);
     }
 
-    for (const match of html.matchAll(/<script\b[^>]*type\s*=\s*(?:"application\/ld\+json"|'application\/ld\+json'|application\/ld\+json)[^>]*>([\s\S]*?)<\/script\s*>/gi)) {
+    for (const match of html.matchAll(
+        /<script\b[^>]*type\s*=\s*(?:"application\/ld\+json"|'application\/ld\+json'|application\/ld\+json)[^>]*>([\s\S]*?)<\/script\s*>/gi,
+    )) {
         try {
             visit(JSON.parse(decodeHtmlEntities(match[1]).trim()));
         } catch {

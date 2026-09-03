@@ -140,9 +140,7 @@ async function directoryEndpoints(signal, rawUrl) {
 }
 
 export function cobaltRequestPayload(rawUrl, outputType, targetBytes) {
-    const preferredHeight = ["auto", "video"].includes(outputType)
-        ? preferredVideoHeight(targetBytes)
-        : null;
+    const preferredHeight = ["auto", "video"].includes(outputType) ? preferredVideoHeight(targetBytes) : null;
     return {
         url: rawUrl,
         videoQuality: preferredHeight ? String(preferredHeight) : "max",
@@ -167,7 +165,7 @@ export function cobaltRequestHeaders(trustedEndpoint) {
 function responseHeader(response, name) {
     if (typeof response.headers?.get === "function") return response.headers.get(name);
     const value = response.headers?.[name.toLowerCase()];
-    return Array.isArray(value) ? value[0] : value ?? null;
+    return Array.isArray(value) ? value[0] : (value ?? null);
 }
 
 async function closeResponse(response) {

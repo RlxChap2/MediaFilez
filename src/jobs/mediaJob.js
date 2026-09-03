@@ -28,9 +28,7 @@ function missingGuildDeliveryPermissions(interaction, publicRepliesInGuilds = co
         required.push([PermissionFlagsBits.SendMessagesInThreads, "Send Messages in Threads"]);
     }
 
-    return required
-        .filter(([permission]) => !interaction.appPermissions.has(permission))
-        .map(([, label]) => label);
+    return required.filter(([permission]) => !interaction.appPermissions.has(permission)).map(([, label]) => label);
 }
 
 function requireGuildDeliveryPermissions(interaction) {
@@ -163,8 +161,4 @@ export async function handleMediaCommand(interaction) {
     }
 }
 
-export {
-    missingGuildDeliveryPermissions,
-    runMediaJob,
-    uploadTargetBytesForInteraction,
-};
+export { missingGuildDeliveryPermissions, runMediaJob, uploadTargetBytesForInteraction };

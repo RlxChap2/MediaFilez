@@ -15,9 +15,10 @@ const PHASE_COPY = {
 function progressText(progress) {
     if (!progress) return "";
     if (Number.isFinite(progress.percent)) {
-        const bytes = progress.downloadedBytes && progress.totalBytes
-            ? ` | ${formatBytes(progress.downloadedBytes)} / ${formatBytes(progress.totalBytes)}`
-            : "";
+        const bytes =
+            progress.downloadedBytes && progress.totalBytes
+                ? ` | ${formatBytes(progress.downloadedBytes)} / ${formatBytes(progress.totalBytes)}`
+                : "";
         return ` | ${Math.min(progress.percent, 100).toFixed(1)}%${bytes}`;
     }
     if (progress.downloadedBytes) {
@@ -70,20 +71,15 @@ function errorChain(error) {
 }
 
 function isRetryableUploadError(error) {
-    const retryableCodes = new Set([
-        "UND_ERR_SOCKET",
-        "UND_ERR_CONNECT_TIMEOUT",
-        "ECONNRESET",
-        "ETIMEDOUT",
-        "EPIPE",
-    ]);
-    return errorChain(error).some((item) => (
-        item?.name === "AbortError"
-        || item?.name === "SocketError"
-        || retryableCodes.has(item?.code)
-        || Number(item?.status) >= 500
-        || /other side closed|socket closed|connection reset|timed out/i.test(item?.message || "")
-    ));
+    const retryableCodes = new Set(["UND_ERR_SOCKET", "UND_ERR_CONNECT_TIMEOUT", "ECONNRESET", "ETIMEDOUT", "EPIPE"]);
+    return errorChain(error).some(
+        (item) =>
+            item?.name === "AbortError" ||
+            item?.name === "SocketError" ||
+            retryableCodes.has(item?.code) ||
+            Number(item?.status) >= 500 ||
+            /other side closed|socket closed|connection reset|timed out/i.test(item?.message || ""),
+    );
 }
 
 function uploadErrorSummary(error) {
@@ -102,7 +98,11 @@ function uploadFailure(error, attempts) {
         );
     }
     if (codes.includes(10015) || codes.includes(10062)) {
-        return userError("The Discord interaction expired before the upload finished. Try the command again.", "INTERACTION_EXPIRED", { cause: error });
+        return userError(
+            "The Discord interaction expired before the upload finished. Try the command again.",
+            "INTERACTION_EXPIRED",
+            { cause: error },
+        );
     }
     return userError(
         `Discord closed the upload connection before accepting the file after ${attempts} attempt${attempts === 1 ? "" : "s"}. Try the command again.`,
@@ -149,7 +149,9 @@ export class ReplySession {
         for (let attempt = 1; attempt <= this.uploadAttempts; attempt += 1) {
             const attachment = new AttachmentBuilder(output.filePath, { name: output.fileName });
             const payload = { content: deliveredCopy(output, details), files: [attachment] };
-            log.info(`Discord upload attempt ${attempt}/${this.uploadAttempts}: ${output.fileName} (${formatBytes(output.sizeBytes)}).`);
+            log.info(
+                `Discord upload attempt ${attempt}/${this.uploadAttempts}: ${output.fileName} (${formatBytes(output.sizeBytes)}).`,
+            );
 
             try {
                 await this.interaction.editReply(payload);
@@ -162,7 +164,9 @@ export class ReplySession {
                         const message = await this.interaction.fetchReply();
                         if (hasExpectedAttachment(message, output)) {
                             this.state = "committed";
-                            log.warn("Discord upload call failed, but the attachment is present on the original response.");
+                            log.warn(
+                                "Discord upload call failed, but the attachment is present on the original response.",
+                            );
                             return;
                         }
                         verificationError = null;

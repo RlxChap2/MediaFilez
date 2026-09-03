@@ -3,17 +3,11 @@ import test from "node:test";
 import { decodeHtmlEntities } from "../../src/utils/htmlEntities.js";
 
 test("decodes named, decimal, and hexadecimal HTML entities", () => {
-    assert.equal(
-        decodeHtmlEntities("&amp;&quot;&#39;&apos;&lt;&gt;&#47;&#x2f;"),
-        `&"''<>//`,
-    );
+    assert.equal(decodeHtmlEntities("&amp;&quot;&#39;&apos;&lt;&gt;&#47;&#x2f;"), `&"''<>//`);
 });
 
 test("does not decode replacement text a second time", () => {
-    assert.equal(
-        decodeHtmlEntities("&amp;quot;&amp;#39;&amp;#x2f;"),
-        "&quot;&#39;&#x2f;",
-    );
+    assert.equal(decodeHtmlEntities("&amp;quot;&amp;#39;&amp;#x2f;"), "&quot;&#39;&#x2f;");
 });
 
 test("preserves invalid numeric entities", () => {

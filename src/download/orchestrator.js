@@ -29,7 +29,9 @@ const DEFAULT_ENGINES = new Map([
 ]);
 
 function compactEngineError(message) {
-    const detail = String(message || "Unknown engine failure").replace(/\s+/g, " ").trim();
+    const detail = String(message || "Unknown engine failure")
+        .replace(/\s+/g, " ")
+        .trim();
     if (/you(?:'|’)ve been blocked by network security/i.test(detail)) {
         return "The source blocked this server's network address.";
     }
@@ -136,7 +138,9 @@ export async function downloadMedia(rawUrl, jobDir, options = {}) {
                 };
             }
 
-            const detail = compactEngineError(error instanceof DownloadMethodError ? error.publicMessage : error.message);
+            const detail = compactEngineError(
+                error instanceof DownloadMethodError ? error.publicMessage : error.message,
+            );
             attempts.push({ engine: engineName, error: detail, elapsedMs: performance.now() - startedAt });
             log.warn(`${engineName} failed: ${detail}`);
             await fs.rm(attemptDir, { recursive: true, force: true });
