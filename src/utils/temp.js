@@ -33,14 +33,25 @@ async function ensureTempDiskSpace() {
 
 export async function createRequestTempDir() {
     await ensureTempDiskSpace();
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), validateTempPrefix(config.tempPrefix)));
+    const prefix = validateTempPrefix(config.tempPrefix);
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), `${prefix}${process.pid}-`));
     log.debug("Created temp dir:", dir);
     return dir;
+}
+
+function isProcessActive(pid) {
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch (error) {
+        return error?.code !== "ESRCH";
+    }
 }
 
 export async function cleanupStaleTempDirs(options = {}) {
     const rootDir = path.resolve(options.rootDir ?? os.tmpdir());
     const prefix = validateTempPrefix(options.prefix ?? config.tempPrefix);
+    const processIsActive = options.isProcessActive ?? isProcessActive;
     let entries;
     try {
         entries = await fs.readdir(rootDir, { withFileTypes: true });
@@ -52,6 +63,10 @@ export async function cleanupStaleTempDirs(options = {}) {
     let removed = 0;
     for (const entry of entries) {
         if (!entry.isDirectory() || !entry.name.startsWith(prefix)) continue;
+        const ownerMatch = /^(\d+)-/.exec(entry.name.slice(prefix.length));
+        if (!ownerMatch) continue;
+        const ownerPid = Number.parseInt(ownerMatch[1], 10);
+        if (!Number.isSafeInteger(ownerPid) || ownerPid <= 0 || processIsActive(ownerPid)) continue;
         const target = path.resolve(rootDir, entry.name);
         if (path.dirname(target) !== rootDir) continue;
         try {

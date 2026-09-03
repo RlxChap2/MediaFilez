@@ -3,27 +3,42 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { cleanupStaleTempDirs } from "../../src/utils/temp.js";
+import { config } from "../../src/config.js";
+import { cleanupStaleTempDirs, createRequestTempDir } from "../../src/utils/temp.js";
 
-test("startup cleanup removes only matching temp directories", async (t) => {
+test("request temp directories include their owner process", async (t) => {
+    const dir = await createRequestTempDir();
+    t.after(() => fs.rm(dir, { recursive: true, force: true }));
+
+    assert.ok(path.basename(dir).startsWith(`${config.tempPrefix}${process.pid}-`));
+});
+
+test("startup cleanup removes only temp directories owned by stopped processes", async (t) => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-cleanup-test-"));
     t.after(() => fs.rm(root, { recursive: true, force: true }));
-    const staleOne = path.join(root, "mediafilez-job-one");
-    const staleTwo = path.join(root, "mediafilez-job-two");
+    const stale = path.join(root, "mediafilez-101-job-one");
+    const active = path.join(root, "mediafilez-202-job-two");
+    const legacy = path.join(root, "mediafilez-job-legacy");
     const unrelated = path.join(root, "unrelated-job");
     const matchingFile = path.join(root, "mediafilez-not-a-directory");
     await Promise.all([
-        fs.mkdir(staleOne),
-        fs.mkdir(staleTwo),
+        fs.mkdir(stale),
+        fs.mkdir(active),
+        fs.mkdir(legacy),
         fs.mkdir(unrelated),
         fs.writeFile(matchingFile, "keep"),
     ]);
 
-    const removed = await cleanupStaleTempDirs({ rootDir: root, prefix: "mediafilez-" });
+    const removed = await cleanupStaleTempDirs({
+        rootDir: root,
+        prefix: "mediafilez-",
+        isProcessActive: (pid) => pid === 202,
+    });
 
-    assert.equal(removed, 2);
-    await assert.rejects(fs.access(staleOne), { code: "ENOENT" });
-    await assert.rejects(fs.access(staleTwo), { code: "ENOENT" });
+    assert.equal(removed, 1);
+    await assert.rejects(fs.access(stale), { code: "ENOENT" });
+    await fs.access(active);
+    await fs.access(legacy);
     await fs.access(unrelated);
     await fs.access(matchingFile);
 });
