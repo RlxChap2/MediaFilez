@@ -2,3 +2,6 @@ allowBuilds:
     "@ffprobe-installer/linux-x64@5.2.0": true
     ffmpeg-static: true
     youtube-dl-exec: true
+minimumReleaseAgeExclude:
+    - tinyspawn@1.5.10
+    - youtube-dl-exec@3.1.14
