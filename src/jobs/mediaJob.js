@@ -4,7 +4,7 @@ import { config, DISCORD_HARD_MAX_BYTES } from "../config.js";
 import { FILE_LIMITS, OUTPUT_TYPES } from "../utils/constants.js";
 import { createRequestTempDir, cleanupTempDir } from "../utils/temp.js";
 import { formatBytes, formatElapsed } from "../utils/format.js";
-import { userError } from "../utils/errors.js";
+import { isUserFacingError, userError } from "../utils/errors.js";
 import { log } from "../utils/logger.js";
 import { downloadMedia } from "../download/orchestrator.js";
 import { prepareMediaForDiscord } from "../media/processor.js";
@@ -101,18 +101,26 @@ async function runMediaJob(interaction, reply, request) {
             { phase: "uploading", detail: `Uploading ${formatBytes(output.sizeBytes)} to Discord` },
             { force: true },
         );
-        await reply.commit(output, {
-            method: download.method,
-            downloadMs,
-            processMs,
-            uploadTargetBytes,
-            recovered: download.recovered,
-            metadata: download.metadata,
-        });
+        await reply.commit(
+            output,
+            {
+                method: download.method,
+                downloadMs,
+                processMs,
+                uploadTargetBytes,
+                recovered: download.recovered,
+                metadata: download.metadata,
+            },
+            { signal: controller.signal },
+        );
 
         log.info(`Completed media job for ${interaction.user.tag}: ${output.fileName} via ${download.method}`);
     } catch (error) {
-        log.error(`Media job failed for ${interaction.user.tag}:`, error.stack || error.message);
+        if (isUserFacingError(error)) {
+            log.warn(`Media job ended for ${interaction.user.tag} (${error.code}): ${error.message}`);
+        } else {
+            log.error(`Media job failed for ${interaction.user.tag}:`, error.stack || error.message);
+        }
         await reply.fail(error);
     } finally {
         clearTimeout(timeout);
@@ -156,7 +164,8 @@ export async function handleMediaCommand(interaction) {
             fitToLimit: interaction.options.getBoolean("fit_to_limit") ?? true,
         });
     } catch (error) {
-        log.error(`Could not queue media job: ${error.stack || error.message}`);
+        if (isUserFacingError(error)) log.warn(`Could not queue media job (${error.code}): ${error.message}`);
+        else log.error(`Could not queue media job: ${error.stack || error.message}`);
         await reply.fail(error);
     }
 }

@@ -16,6 +16,10 @@ async function fixture(t) {
 
 const details = { method: "test", downloadMs: 10, processMs: 2, uploadTargetBytes: 25 * 1024 * 1024 };
 
+async function uploadThroughInteraction(interaction, payload) {
+    await interaction.editReply({ content: payload.content, files: [payload] });
+}
+
 test("commits once and never overwrites success with a later error", async (t) => {
     const output = await fixture(t);
     const edits = [];
@@ -25,7 +29,7 @@ test("commits once and never overwrites success with a later error", async (t) =
         },
         fetchReply: async () => ({ attachments: new Map() }),
     };
-    const reply = new ReplySession(interaction, { intervalMs: 0 });
+    const reply = new ReplySession(interaction, { intervalMs: 0, upload: uploadThroughInteraction });
     await reply.commit(output, details);
     await reply.fail(new Error("late failure"));
 
@@ -41,7 +45,7 @@ test("does not try to change reply visibility after the initial response", async
             edits.push(payload);
         },
     };
-    const reply = new ReplySession(interaction);
+    const reply = new ReplySession(interaction, { upload: uploadThroughInteraction });
 
     await reply.fail(new Error("failed"));
 
@@ -59,7 +63,7 @@ test("treats a rejected edit as success when Discord already has the attachment"
             attachments: new Map([["1", { name: output.fileName, size: output.sizeBytes }]]),
         }),
     };
-    const reply = new ReplySession(interaction);
+    const reply = new ReplySession(interaction, { upload: uploadThroughInteraction });
     await reply.commit(output, details);
     assert.equal(reply.state, "committed");
 });
@@ -86,6 +90,7 @@ test("retries a transient upload only after Discord confirms there is no attachm
     const reply = new ReplySession(interaction, {
         uploadAttempts: 3,
         uploadRetryDelayMs: 0,
+        upload: uploadThroughInteraction,
         wait: async () => {},
     });
 
@@ -112,6 +117,7 @@ test("returns a useful error after verified upload attempts are exhausted", asyn
     const reply = new ReplySession(interaction, {
         uploadAttempts: 2,
         uploadRetryDelayMs: 0,
+        upload: uploadThroughInteraction,
         wait: async () => {},
     });
 
@@ -122,6 +128,32 @@ test("returns a useful error after verified upload attempts are exhausted", asyn
 
     assert.equal(reply.state, "open");
     assert.equal(uploadAttempts, 2);
+});
+
+test("does not retry an upload after the whole job is cancelled", async (t) => {
+    const output = await fixture(t);
+    const controller = new AbortController();
+    controller.abort();
+    let uploadAttempts = 0;
+    const interaction = {
+        fetchReply: async () => ({ attachments: new Map() }),
+    };
+    const reply = new ReplySession(interaction, {
+        uploadAttempts: 3,
+        uploadRetryDelayMs: 0,
+        upload: async () => {
+            uploadAttempts += 1;
+            throw Object.assign(new Error("upload aborted"), { name: "AbortError" });
+        },
+        wait: async () => {},
+    });
+
+    await assert.rejects(
+        reply.commit(output, details, { signal: controller.signal }),
+        (error) => error.name === "UserFacingError" && error.code === "JOB_TIMEOUT",
+    );
+    assert.equal(uploadAttempts, 1);
+    assert.equal(reply.state, "open");
 });
 
 test("preserves user-facing messages even across module or realm boundaries", () => {

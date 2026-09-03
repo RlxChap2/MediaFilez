@@ -1,6 +1,6 @@
 import { MessageFlags } from "discord.js";
 import { log } from "../utils/logger.js";
-import { messageForError } from "../utils/errors.js";
+import { isUserFacingError, messageForError } from "../utils/errors.js";
 import { handleMediaCommand } from "../jobs/mediaJob.js";
 
 async function sendError(interaction, error) {
@@ -41,7 +41,11 @@ export async function handleCommand(interaction) {
             log.warn(`/${interaction.commandName} expired before Discord accepted the initial response.`);
             return;
         }
-        log.error(`/${interaction.commandName} failed:`, error.stack || error.message);
+        if (isUserFacingError(error)) {
+            log.warn(`/${interaction.commandName} ended (${error.code}): ${error.message}`);
+        } else {
+            log.error(`/${interaction.commandName} failed:`, error.stack || error.message);
+        }
         await sendError(interaction, error);
     }
 }

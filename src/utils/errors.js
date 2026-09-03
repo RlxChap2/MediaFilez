@@ -31,8 +31,12 @@ export function userError(message, code = "USER_ERROR", options = {}) {
     return new UserFacingError(message, { code, ...options });
 }
 
+export function isUserFacingError(error) {
+    return error instanceof UserFacingError || error?.name === "UserFacingError";
+}
+
 export function messageForError(error) {
-    if (error instanceof UserFacingError || error?.name === "UserFacingError") return error.message;
+    if (isUserFacingError(error)) return error.message;
     if (error instanceof DeliveryUnknownError || error?.name === "DeliveryUnknownError") return error.message;
     if (typeof error?.publicMessage === "string") return error.publicMessage;
     if (error?.name === "TimeoutError") return "The job timed out. Try a smaller file or a faster source URL.";
