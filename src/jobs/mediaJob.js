@@ -116,8 +116,8 @@ async function runMediaJob(interaction, reply, request) {
         );
 
         log.info(`Completed media job for ${interaction.user.tag}: ${output.fileName} via ${download.method}`);
-    } catch (error) {
-        if (tempOwnershipSignal.aborted && !isUserFacingError(error)) error = tempOwnershipSignal.reason;
+    } catch (caught) {
+        const error = tempOwnershipSignal.aborted && !isUserFacingError(caught) ? tempOwnershipSignal.reason : caught;
         if (isUserFacingError(error)) {
             log.warn(`Media job ended for ${interaction.user.tag} (${error.code}): ${error.message}`);
         } else {
