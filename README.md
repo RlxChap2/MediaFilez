@@ -1,6 +1,6 @@
 # MediaFilez
 
-MediaFilez downloads public media into Discord through one `/media` command. It tries ordered engines, validates every result, fits oversized video to the current interaction limit, and uploads one confirmed attachment.
+MediaFilez downloads public media into Discord through one `/media` command. It tries ordered engines, validates every result, fits oversized video, audio, or images to the current interaction limit, and streams one confirmed attachment without buffering the whole file in memory.
 
 The command has four output choices:
 
@@ -23,6 +23,11 @@ The command has four output choices:
 - External downloaders run only for recognized public platforms. Unknown pages and direct links stay inside the DNS-, redirect-, and byte-guarded HTTP engines, and gallery-dl enforces the byte ceiling during transfer.
 - The queue accepts four jobs by default and two jobs per user. Both values remain configurable.
 - Discord's `attachmentSizeLimit` is now the normal upload target. The old 7 MiB ceiling is gone.
+- Final Discord uploads use a bounded-memory multipart stream. Nitro-sized attachments no longer expand into several in-memory copies before delivery.
+- `fit_to_limit` now handles oversized audio and images as well as video. Audio is re-encoded to MP3; images step down JPEG quality and resolution only as far as needed.
+- An engine-local timeout falls through to the next engine. Only the whole-job abort stops fallback.
+- yt-dlp receives a private writable cookie copy for each attempt, so the configured source can remain mounted read-only and concurrent jobs cannot rewrite one shared jar.
+- Startup removes abandoned MediaFilez temp directories left by a forced process exit.
 
 ## Download pipeline
 
@@ -44,12 +49,14 @@ Engine order depends on the host and requested output.
 
 Each engine writes into its own attempt directory. MediaFilez checks file signatures and FFprobe streams before committing a result. A fallback starts only after the prior attempt stops and leaves no valid file. A process error does not discard a complete file left behind.
 
-The platform engines cover many sites, including Pinterest, while unknown pages can still expose media through standard page metadata or direct HTTP. No downloader can guarantee every website: sites change markup, expire media URLs, block data-center addresses, require fresh cookies, or remove extractor access. See the current [yt-dlp supported sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md) and [gallery-dl supported sites](https://github.com/mikf/gallery-dl/blob/master/docs/supportedsites.md).
+The platform engines cover many sites, including Pinterest, while unknown pages can still expose media through standard page metadata or direct HTTP. Unknown URLs are not passed blindly to yt-dlp or gallery-dl: keeping them in the redirect-, DNS-, and byte-guarded HTTP path prevents an arbitrary page from expanding the subprocess network boundary. Add a host to an explicit platform route only after its extractor and security behavior are known.
+
+No downloader can guarantee every website: sites change markup, expire media URLs, block data-center addresses, require fresh cookies, or remove extractor access. See the current [yt-dlp supported sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md) and [gallery-dl supported sites](https://github.com/mikf/gallery-dl/blob/master/docs/supportedsites.md).
 
 ## Requirements
 
-- Node.js 22 or newer
-- pnpm 11
+- Node.js 22.13 or newer
+- pnpm 11.25
 - A Discord application token
 
 Local users do not need to install FFmpeg, FFprobe, yt-dlp, or gallery-dl by hand. The package install supplies them. Run `pnpm run preflight` to see the exact binary version and path status.
@@ -66,6 +73,7 @@ Copy `.env.example` to `.env`, then set `BOT_TOKEN` and `CLIENT_ID`.
 
 ```bash
 pnpm run check
+pnpm run format:check
 pnpm run preflight
 pnpm run deploy
 pnpm start
@@ -122,7 +130,7 @@ Some public posts still require an authenticated browser session. Export a fresh
 MEDIA_COOKIES_FILE=C:\path\to\cookies.txt
 ```
 
-yt-dlp and gallery-dl share this file. Mount it read-only on a server and never commit it.
+yt-dlp and gallery-dl share this source. Mount it read-only on a server and never commit it. MediaFilez copies it with private permissions into the current yt-dlp attempt because yt-dlp updates its cookie jar on exit; the mounted source remains unchanged.
 
 ```yaml
 services:
@@ -166,9 +174,9 @@ MediaFilez does not bypass private-account permissions, paywalls, DRM, or remove
 
 Discord sends `attachment_size_limit` with each interaction. MediaFilez uses the smaller value between that limit, `DISCORD_UPLOAD_TARGET_SIZE`, and its 500 MiB hard ceiling. Discord documents this field as the effective per-attachment limit for the invoking user or guild: [Discord interaction and upload reference](https://docs.discord.com/developers/interactions/receiving-and-responding).
 
-When `fit_to_limit` is enabled, MediaFilez keeps a video unchanged if it fits. Oversized video goes through remux, audio-only reduction, then H.264 fitting when needed. Files that cannot fit at usable settings return a measured size error.
+When `fit_to_limit` is enabled, MediaFilez keeps media unchanged if it fits. Oversized video goes through remux, audio-only reduction, then H.264 fitting when needed. Oversized audio is re-encoded at a target-aware bitrate. Oversized images become JPEG and step down through bounded quality and resolution attempts. Files that cannot fit at usable settings return a measured size error.
 
-Upload retries are verification-first. If Discord closes a connection, the bot fetches the original reply and checks its attachment before another upload starts. An unknown delivery state never clears a file that Discord may have accepted.
+The final multipart request streams from disk and remains under the whole-job abort signal. Upload retries are verification-first. If Discord closes a connection, the bot fetches the original reply and checks its attachment before another upload starts. An unknown delivery state never clears a file that Discord may have accepted.
 
 ## Project map
 

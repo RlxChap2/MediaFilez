@@ -1,6 +1,6 @@
 # Contributing
 
-Use Node.js 22 or newer and pnpm 11. Keep each change inside the module that owns the behavior.
+Use Node.js 22.13 or newer and pnpm 11.25. Keep each change inside the module that owns the behavior.
 
 ## Before editing
 
@@ -9,6 +9,7 @@ Run the deterministic baseline:
 ```bash
 pnpm install
 pnpm run check
+pnpm run format:check
 ```
 
 `pnpm run preflight` checks runtime credentials and external binaries. It reports a failure until `BOT_TOKEN` exists, so it is not part of the credential-free unit suite.
