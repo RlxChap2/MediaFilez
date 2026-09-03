@@ -62,9 +62,20 @@ function progressHandler(options) {
     };
 }
 
+async function prepareCookieFile(attemptDir) {
+    if (!config.mediaCookiesFile) return null;
+
+    const cookieFile = path.join(attemptDir, ".yt-dlp-cookies.txt");
+    const contents = await fs.readFile(config.mediaCookiesFile);
+    await fs.writeFile(cookieFile, contents, { flag: "wx", mode: 0o600 });
+    await fs.chmod(cookieFile, 0o600);
+    return cookieFile;
+}
+
 export async function downloadWithYtDlp(rawUrl, attemptDir, options = {}) {
     const maxBytes = options.maxBytes ?? config.maxDownloadBytes;
     const outputType = options.outputType ?? "video";
+    const cookieFile = await prepareCookieFile(attemptDir);
     const args = [
         "--no-config",
         "--no-playlist",
@@ -99,7 +110,7 @@ export async function downloadWithYtDlp(rawUrl, attemptDir, options = {}) {
         path.join(attemptDir, "%(title).120B_%(id).40B.%(ext)s"),
     ];
     if (config.ytdlpImpersonate) args.push("--impersonate", config.ytdlpImpersonate);
-    if (config.mediaCookiesFile) args.push("--cookies", config.mediaCookiesFile);
+    if (cookieFile) args.push("--cookies", cookieFile);
     else if (config.ytdlpCookiesFromBrowser) args.push("--cookies-from-browser", config.ytdlpCookiesFromBrowser);
 
     if (outputType === "thumbnail" || outputType === "image") {
@@ -112,7 +123,7 @@ export async function downloadWithYtDlp(rawUrl, attemptDir, options = {}) {
 
     let processError = null;
     try {
-        await runProcess(resolveYtDlpPath(), args, {
+        await (options.processRunner ?? runProcess)(resolveYtDlpPath(), args, {
             timeoutMs: config.ytdlpTimeoutMs,
             signal: options.signal,
             onStdoutLine: progressHandler(options),

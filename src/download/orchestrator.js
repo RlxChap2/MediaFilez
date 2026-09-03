@@ -122,7 +122,7 @@ export async function downloadMedia(rawUrl, jobDir, options = {}) {
             };
         } catch (error) {
             if (error instanceof UserFacingError && error.stopFallback) throw error;
-            if (error?.name === "AbortError" || options.signal?.aborted) throw abortError();
+            if (options.signal?.aborted) throw abortError();
 
             const recovered = await recoverArtifact(attemptDir, { outputType, maxBytes, signal: options.signal });
             if (recovered) {

@@ -166,6 +166,39 @@ test("does not start an engine after job cancellation", async (t) => {
     assert.equal(called, false);
 });
 
+test("falls back when one engine reaches its own timeout", async (t) => {
+    const jobDir = await tempJob();
+    t.after(() => fs.rm(jobDir, { recursive: true, force: true }));
+    const calls = [];
+    const engines = new Map([
+        [
+            "timed-out",
+            async () => {
+                calls.push("timed-out");
+                throw Object.assign(new Error("engine request timed out"), { name: "AbortError" });
+            },
+        ],
+        [
+            "fallback",
+            async (_url, attemptDir) => {
+                calls.push("fallback");
+                const filePath = path.join(attemptDir, "result.png");
+                await fs.writeFile(filePath, PNG);
+                return { filePath, fileName: "result.png", method: "fallback" };
+            },
+        ],
+    ]);
+
+    const result = await downloadMedia("https://example.com/post", jobDir, {
+        outputType: "image",
+        plan: ["timed-out", "fallback"],
+        engines,
+    });
+
+    assert.deepEqual(calls, ["timed-out", "fallback"]);
+    assert.equal(result.method, "fallback");
+});
+
 test("does not misreport a generic HTTP 403 as missing account cookies", async (t) => {
     const jobDir = await tempJob();
     t.after(() => fs.rm(jobDir, { recursive: true, force: true }));
