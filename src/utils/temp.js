@@ -1,10 +1,15 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import lockfile from "proper-lockfile";
 import { config } from "../config.js";
 import { log } from "./logger.js";
 import { userError } from "./errors.js";
 import { formatBytes } from "./format.js";
+
+const TEMP_LOCK_STALE_MS = 10_000;
+const TEMP_LOCK_UPDATE_MS = 2_000;
+const activeTempLocks = new Map();
 
 function validateTempPrefix(prefix) {
     if (typeof prefix !== "string" || prefix.length < 8 || prefix.includes("/") || prefix.includes("\\")) {
@@ -35,23 +40,30 @@ export async function createRequestTempDir() {
     await ensureTempDiskSpace();
     const prefix = validateTempPrefix(config.tempPrefix);
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), `${prefix}${process.pid}-`));
+    try {
+        const release = await lockfile.lock(dir, tempLockOptions(dir));
+        activeTempLocks.set(path.resolve(dir), release);
+    } catch (error) {
+        await fs.rm(dir, { recursive: true, force: true });
+        throw error;
+    }
     log.debug("Created temp dir:", dir);
     return dir;
 }
 
-function isProcessActive(pid) {
-    try {
-        process.kill(pid, 0);
-        return true;
-    } catch (error) {
-        return error?.code !== "ESRCH";
-    }
+function tempLockOptions(dir) {
+    return {
+        realpath: false,
+        retries: 0,
+        stale: TEMP_LOCK_STALE_MS,
+        update: TEMP_LOCK_UPDATE_MS,
+        onCompromised: (error) => log.error(`Temp directory ownership lock was compromised for ${dir}:`, error),
+    };
 }
 
 export async function cleanupStaleTempDirs(options = {}) {
     const rootDir = path.resolve(options.rootDir ?? os.tmpdir());
     const prefix = validateTempPrefix(options.prefix ?? config.tempPrefix);
-    const processIsActive = options.isProcessActive ?? isProcessActive;
     let entries;
     try {
         entries = await fs.readdir(rootDir, { withFileTypes: true });
@@ -62,18 +74,26 @@ export async function cleanupStaleTempDirs(options = {}) {
 
     let removed = 0;
     for (const entry of entries) {
-        if (!entry.isDirectory() || !entry.name.startsWith(prefix)) continue;
+        if (!entry.isDirectory() || !entry.name.startsWith(prefix) || entry.name.endsWith(".lock")) continue;
         const ownerMatch = /^(\d+)-/.exec(entry.name.slice(prefix.length));
         if (!ownerMatch) continue;
-        const ownerPid = Number.parseInt(ownerMatch[1], 10);
-        if (!Number.isSafeInteger(ownerPid) || ownerPid <= 0 || processIsActive(ownerPid)) continue;
         const target = path.resolve(rootDir, entry.name);
         if (path.dirname(target) !== rootDir) continue;
+        let release;
+        try {
+            release = await lockfile.lock(target, tempLockOptions(target));
+        } catch (error) {
+            if (error?.code === "ELOCKED") continue;
+            log.warn(`Could not lock stale temp dir ${target}: ${error.message}`);
+            continue;
+        }
         try {
             await fs.rm(target, { recursive: true, force: true });
             removed += 1;
         } catch (error) {
             log.warn(`Could not clean stale temp dir ${target}: ${error.message}`);
+        } finally {
+            await release().catch((error) => log.warn(`Could not release stale temp lock ${target}: ${error.message}`));
         }
     }
 
@@ -84,10 +104,17 @@ export async function cleanupStaleTempDirs(options = {}) {
 export async function cleanupTempDir(dir) {
     if (!dir) return;
 
+    const resolvedDir = path.resolve(dir);
+    const release = activeTempLocks.get(resolvedDir);
+    activeTempLocks.delete(resolvedDir);
+    if (release) {
+        await release().catch((error) => log.warn(`Could not release temp lock ${resolvedDir}: ${error.message}`));
+    }
+
     try {
-        await fs.rm(dir, { recursive: true, force: true });
-        log.debug("Cleaned up temp dir:", dir);
+        await fs.rm(resolvedDir, { recursive: true, force: true });
+        log.debug("Cleaned up temp dir:", resolvedDir);
     } catch (error) {
-        log.warn(`Could not clean temp dir ${dir}: ${error.message}`);
+        log.warn(`Could not clean temp dir ${resolvedDir}: ${error.message}`);
     }
 }
