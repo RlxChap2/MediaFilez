@@ -27,7 +27,7 @@ The command has four output choices:
 - `fit_to_limit` now handles oversized audio and images as well as video. Audio is re-encoded to MP3; images step down JPEG quality and resolution only as far as needed.
 - An engine-local timeout falls through to the next engine. Only the whole-job abort stops fallback.
 - yt-dlp receives a private writable cookie copy for each attempt, so the configured source can remain mounted read-only and concurrent jobs cannot rewrite one shared jar.
-- Per-job ownership locks let startup remove abandoned MediaFilez temp directories without touching work owned by another running instance.
+- Process-lifetime ownership locks let startup remove abandoned MediaFilez temp directories without touching work owned by another running instance.
 
 ## Download pipeline
 

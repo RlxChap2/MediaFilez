@@ -2,7 +2,7 @@ import PQueue from "p-queue";
 import { MessageFlags, PermissionFlagsBits } from "discord.js";
 import { config, DISCORD_HARD_MAX_BYTES } from "../config.js";
 import { FILE_LIMITS, OUTPUT_TYPES } from "../utils/constants.js";
-import { createRequestTempDir, cleanupTempDir } from "../utils/temp.js";
+import { createRequestTempDir, cleanupTempDir, tempOwnershipSignal } from "../utils/temp.js";
 import { formatBytes, formatElapsed } from "../utils/format.js";
 import { isUserFacingError, userError } from "../utils/errors.js";
 import { log } from "../utils/logger.js";
@@ -67,6 +67,7 @@ function releaseUserSlot(userId) {
 
 async function runMediaJob(interaction, reply, request) {
     const controller = new AbortController();
+    const signal = AbortSignal.any([controller.signal, tempOwnershipSignal]);
     const timeout = setTimeout(() => controller.abort(), config.jobTimeoutMs);
     const uploadTargetBytes = uploadTargetBytesForInteraction(interaction);
     let tempDir;
@@ -78,7 +79,7 @@ async function runMediaJob(interaction, reply, request) {
             outputType: request.outputType,
             maxBytes: config.maxDownloadBytes,
             targetBytes: uploadTargetBytes,
-            signal: controller.signal,
+            signal,
             onStatus: (status) => reply.update(status),
         });
         const downloadMs = performance.now() - downloadStarted;
@@ -89,7 +90,7 @@ async function runMediaJob(interaction, reply, request) {
             tempDir,
             maxAttachmentBytes: uploadTargetBytes,
             allowCompression: request.fitToLimit,
-            signal: controller.signal,
+            signal,
             onStatus: (status) => reply.update(status),
         });
         const processMs = performance.now() - processStarted;
@@ -111,11 +112,12 @@ async function runMediaJob(interaction, reply, request) {
                 recovered: download.recovered,
                 metadata: download.metadata,
             },
-            { signal: controller.signal },
+            { signal },
         );
 
         log.info(`Completed media job for ${interaction.user.tag}: ${output.fileName} via ${download.method}`);
     } catch (error) {
+        if (tempOwnershipSignal.aborted && !isUserFacingError(error)) error = tempOwnershipSignal.reason;
         if (isUserFacingError(error)) {
             log.warn(`Media job ended for ${interaction.user.tag} (${error.code}): ${error.message}`);
         } else {

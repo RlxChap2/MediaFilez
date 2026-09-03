@@ -1,15 +1,20 @@
+import crypto from "node:crypto";
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
-import lockfile from "proper-lockfile";
 import { config } from "../config.js";
 import { log } from "./logger.js";
 import { userError } from "./errors.js";
 import { formatBytes } from "./format.js";
 
-const TEMP_LOCK_STALE_MS = 10_000;
-const TEMP_LOCK_UPDATE_MS = 2_000;
-const activeTempLocks = new Map();
+const TEMP_HOST_ID = crypto.createHash("sha256").update(os.hostname()).digest("hex").slice(0, 12);
+const TEMP_OWNER_ID = crypto.randomBytes(16).toString("hex");
+const TEMP_OWNER_PROBE_TIMEOUT_MS = 500;
+const tempOwnershipController = new AbortController();
+export const tempOwnershipSignal = tempOwnershipController.signal;
+let ownerServerPromise;
 
 function validateTempPrefix(prefix) {
     if (typeof prefix !== "string" || prefix.length < 8 || prefix.includes("/") || prefix.includes("\\")) {
@@ -36,34 +41,88 @@ async function ensureTempDiskSpace() {
     }
 }
 
-export async function createRequestTempDir() {
+export async function createRequestTempDir(options = {}) {
+    if (tempOwnershipSignal.aborted) throw tempOwnershipSignal.reason;
     await ensureTempDiskSpace();
-    const prefix = validateTempPrefix(config.tempPrefix);
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), `${prefix}${process.pid}-`));
-    try {
-        const release = await lockfile.lock(dir, tempLockOptions(dir));
-        activeTempLocks.set(path.resolve(dir), release);
-    } catch (error) {
-        await fs.rm(dir, { recursive: true, force: true });
-        throw error;
-    }
+    const rootDir = path.resolve(options.rootDir ?? os.tmpdir());
+    const prefix = validateTempPrefix(options.prefix ?? config.tempPrefix);
+    await ensureTempOwnerServer();
+    const dir = await fs.mkdtemp(path.join(rootDir, `${prefix}${TEMP_HOST_ID}-${TEMP_OWNER_ID}-`));
     log.debug("Created temp dir:", dir);
     return dir;
 }
 
-function tempLockOptions(dir) {
-    return {
-        realpath: false,
-        retries: 0,
-        stale: TEMP_LOCK_STALE_MS,
-        update: TEMP_LOCK_UPDATE_MS,
-        onCompromised: (error) => log.error(`Temp directory ownership lock was compromised for ${dir}:`, error),
-    };
+function tempOwnerEndpoint(ownerId) {
+    if (process.platform === "win32") return `\\\\.\\pipe\\mediafilez-${ownerId}`;
+    return path.join(os.tmpdir(), `.mediafilez-${ownerId}.sock`);
+}
+
+function ensureTempOwnerServer() {
+    if (ownerServerPromise) return ownerServerPromise;
+
+    const endpoint = tempOwnerEndpoint(TEMP_OWNER_ID);
+    ownerServerPromise = new Promise((resolve, reject) => {
+        const server = net.createServer((socket) => socket.end());
+        const rejectStartup = (error) => {
+            ownerServerPromise = undefined;
+            reject(error);
+        };
+        server.once("error", rejectStartup);
+        server.listen(endpoint, () => {
+            server.off("error", rejectStartup);
+            server.on("error", (error) => {
+                log.error("Temp ownership server failed:", error);
+                tempOwnershipController.abort(
+                    userError(
+                        "Temporary storage ownership was lost. Try the request again after the bot restarts.",
+                        "TEMP_OWNERSHIP_LOST",
+                        { cause: error },
+                    ),
+                );
+            });
+            server.unref();
+            if (process.platform !== "win32") {
+                process.once("exit", () => {
+                    try {
+                        fsSync.rmSync(endpoint, { force: true });
+                    } catch {}
+                });
+            }
+            resolve(server);
+        });
+    });
+    return ownerServerPromise;
+}
+
+function tempOwnerFromName(name, prefix) {
+    const match = /^([a-f0-9]{12})-([a-f0-9]{32})-/.exec(name.slice(prefix.length));
+    return match ? { hostId: match[1], ownerId: match[2] } : null;
+}
+
+async function isTempOwnerActive(owner) {
+    if (owner.hostId !== TEMP_HOST_ID) return true;
+    const endpoint = tempOwnerEndpoint(owner.ownerId);
+
+    return await new Promise((resolve) => {
+        let settled = false;
+        const socket = net.createConnection(endpoint);
+        const finish = (active) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeout);
+            socket.destroy();
+            resolve(active);
+        };
+        const timeout = setTimeout(() => finish(true), TEMP_OWNER_PROBE_TIMEOUT_MS);
+        socket.once("connect", () => finish(true));
+        socket.once("error", (error) => finish(!["ECONNREFUSED", "ENOENT"].includes(error?.code)));
+    });
 }
 
 export async function cleanupStaleTempDirs(options = {}) {
     const rootDir = path.resolve(options.rootDir ?? os.tmpdir());
     const prefix = validateTempPrefix(options.prefix ?? config.tempPrefix);
+    const ownerIsActive = options.isOwnerActive ?? isTempOwnerActive;
     let entries;
     try {
         entries = await fs.readdir(rootDir, { withFileTypes: true });
@@ -74,26 +133,25 @@ export async function cleanupStaleTempDirs(options = {}) {
 
     let removed = 0;
     for (const entry of entries) {
-        if (!entry.isDirectory() || !entry.name.startsWith(prefix) || entry.name.endsWith(".lock")) continue;
-        const ownerMatch = /^(\d+)-/.exec(entry.name.slice(prefix.length));
-        if (!ownerMatch) continue;
+        if (!entry.isDirectory() || !entry.name.startsWith(prefix)) continue;
+        const owner = tempOwnerFromName(entry.name, prefix);
+        if (!owner) continue;
         const target = path.resolve(rootDir, entry.name);
         if (path.dirname(target) !== rootDir) continue;
-        let release;
-        try {
-            release = await lockfile.lock(target, tempLockOptions(target));
-        } catch (error) {
-            if (error?.code === "ELOCKED") continue;
-            log.warn(`Could not lock stale temp dir ${target}: ${error.message}`);
-            continue;
-        }
+        if (await ownerIsActive(owner)) continue;
         try {
             await fs.rm(target, { recursive: true, force: true });
             removed += 1;
         } catch (error) {
             log.warn(`Could not clean stale temp dir ${target}: ${error.message}`);
-        } finally {
-            await release().catch((error) => log.warn(`Could not release stale temp lock ${target}: ${error.message}`));
+            continue;
+        }
+        if (owner.hostId === TEMP_HOST_ID && process.platform !== "win32") {
+            try {
+                await fs.rm(tempOwnerEndpoint(owner.ownerId), { force: true });
+            } catch (error) {
+                log.warn(`Could not clean stale temp owner socket for ${target}: ${error.message}`);
+            }
         }
     }
 
@@ -105,12 +163,6 @@ export async function cleanupTempDir(dir) {
     if (!dir) return;
 
     const resolvedDir = path.resolve(dir);
-    const release = activeTempLocks.get(resolvedDir);
-    activeTempLocks.delete(resolvedDir);
-    if (release) {
-        await release().catch((error) => log.warn(`Could not release temp lock ${resolvedDir}: ${error.message}`));
-    }
-
     try {
         await fs.rm(resolvedDir, { recursive: true, force: true });
         log.debug("Cleaned up temp dir:", resolvedDir);
