@@ -6,6 +6,13 @@ import { log } from "./logger.js";
 import { userError } from "./errors.js";
 import { formatBytes } from "./format.js";
 
+function validateTempPrefix(prefix) {
+    if (typeof prefix !== "string" || prefix.length < 8 || prefix.includes("/") || prefix.includes("\\")) {
+        throw new TypeError("TEMP_PREFIX must be a plain name at least eight characters long.");
+    }
+    return prefix;
+}
+
 async function ensureTempDiskSpace() {
     if (!fs.statfs) return;
 
@@ -26,9 +33,37 @@ async function ensureTempDiskSpace() {
 
 export async function createRequestTempDir() {
     await ensureTempDiskSpace();
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), config.tempPrefix));
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), validateTempPrefix(config.tempPrefix)));
     log.debug("Created temp dir:", dir);
     return dir;
+}
+
+export async function cleanupStaleTempDirs(options = {}) {
+    const rootDir = path.resolve(options.rootDir ?? os.tmpdir());
+    const prefix = validateTempPrefix(options.prefix ?? config.tempPrefix);
+    let entries;
+    try {
+        entries = await fs.readdir(rootDir, { withFileTypes: true });
+    } catch (error) {
+        log.warn(`Could not inspect stale temp directories: ${error.message}`);
+        return 0;
+    }
+
+    let removed = 0;
+    for (const entry of entries) {
+        if (!entry.isDirectory() || !entry.name.startsWith(prefix)) continue;
+        const target = path.resolve(rootDir, entry.name);
+        if (path.dirname(target) !== rootDir) continue;
+        try {
+            await fs.rm(target, { recursive: true, force: true });
+            removed += 1;
+        } catch (error) {
+            log.warn(`Could not clean stale temp dir ${target}: ${error.message}`);
+        }
+    }
+
+    if (removed > 0) log.info(`Cleaned ${removed} stale media temp director${removed === 1 ? "y" : "ies"}.`);
+    return removed;
 }
 
 export async function cleanupTempDir(dir) {
