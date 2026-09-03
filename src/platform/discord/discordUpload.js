@@ -21,6 +21,12 @@ export class DiscordUploadError extends Error {
     }
 }
 
+/**
+ * Validates and normalizes the Discord API base URL.
+ * @param {string} value - The HTTP or HTTPS API base URL without credentials, query parameters, or fragments.
+ * @return {URL} The normalized URL with a trailing slash.
+ * @throws {TypeError} If the value is not a valid HTTP or HTTPS URL.
+ */
 function normalizeApiBaseUrl(value) {
     const url = new URL(value);
     if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
@@ -30,12 +36,22 @@ function normalizeApiBaseUrl(value) {
     return url;
 }
 
+/**
+ * Creates a safe ASCII filename for use in a multipart header.
+ * @param {*} value - The source filename value.
+ * @return {string} A sanitized filename limited to 180 characters, or "attachment.bin" when no usable name exists.
+ */
 function safeHeaderFileName(value) {
     const baseName = path.basename(String(value || "attachment.bin"));
     const ascii = baseName.replace(/[^\x20-\x7e]|["\\]/g, "_").slice(0, 180);
     return ascii || "attachment.bin";
 }
 
+/**
+ * Encodes an attachment filename for use in multipart headers.
+ * @param {*} value - The source filename; missing or empty values use `attachment.bin`.
+ * @return {string} The percent-encoded base filename.
+ */
 function encodedFileName(value) {
     return encodeURIComponent(path.basename(String(value || "attachment.bin"))).replace(
         /[!'()*]/g,
@@ -43,6 +59,13 @@ function encodedFileName(value) {
     );
 }
 
+/**
+ * Creates the multipart form-data sections for a Discord attachment upload.
+ * @param {string} boundary - The multipart boundary string.
+ * @param {{content: string}} payload - The message payload to include in the request.
+ * @param {string} fileName - The attachment filename.
+ * @returns {{prefix: Buffer, suffix: Buffer}} The multipart prefix and closing boundary buffers.
+ */
 function multipartParts(boundary, payload, fileName) {
     const payloadJson = JSON.stringify({
         content: payload.content,
@@ -63,6 +86,12 @@ function multipartParts(boundary, payload, fileName) {
     return { prefix, suffix };
 }
 
+/**
+ * Reads a Discord response body as UTF-8 text within the permitted size limit.
+ * @param {import("node:http").IncomingMessage} response - The response stream to read.
+ * @return {Promise<string>} The response body as UTF-8 text.
+ * @throws {DiscordUploadError} If the response exceeds the maximum permitted size.
+ */
 async function readResponse(response) {
     const chunks = [];
     let size = 0;
@@ -80,6 +109,11 @@ async function readResponse(response) {
     return Buffer.concat(chunks).toString("utf8");
 }
 
+/**
+ * Parses a response body as JSON when content is available.
+ * @param {string} body - The response body to parse.
+ * @return {*} The parsed JSON value, or `null` when the body is empty or invalid.
+ */
 function parseResponseBody(body) {
     if (!body) return null;
     try {
@@ -89,6 +123,12 @@ function parseResponseBody(body) {
     }
 }
 
+/**
+ * Creates a structured upload error from a Discord response and its body.
+ * @param {object} response - The Discord HTTP response.
+ * @param {string} body - The response body.
+ * @return {DiscordUploadError} The error containing the HTTP status, Discord error code, and retry delay when available.
+ */
 function errorFromResponse(response, body) {
     const data = parseResponseBody(body);
     const status = response.statusCode ?? 0;
@@ -101,6 +141,11 @@ function errorFromResponse(response, body) {
     });
 }
 
+/**
+ * Waits for an HTTP response and processes its body.
+ * @param {import("node:http").ClientRequest} request - The request to monitor.
+ * @returns {Promise<unknown|null>} The parsed response body, or `null` when the body is unavailable or invalid.
+ */
 function responsePromiseFor(request) {
     return new Promise((resolve, reject) => {
         request.once("response", async (response) => {
@@ -126,6 +171,13 @@ function settle(promise) {
     );
 }
 
+/**
+ * Create an uploader for Discord interaction replies.
+ * @param {Object} [options] - Uploader configuration.
+ * @param {string} [options.apiBaseUrl] - Discord API base URL.
+ * @param {number} [options.timeoutMs] - Request timeout in milliseconds.
+ * @returns {Function} An uploader that sends a prepared attachment to the interaction's original reply.
+ */
 export function createDiscordUploader(options = {}) {
     const apiBaseUrl = normalizeApiBaseUrl(options.apiBaseUrl ?? DISCORD_API_BASE_URL);
     const timeoutMs = options.timeoutMs ?? config.discordRestTimeoutMs;

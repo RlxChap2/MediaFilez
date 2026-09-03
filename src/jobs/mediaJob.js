@@ -65,6 +65,12 @@ function releaseUserSlot(userId) {
     else activeByUser.set(userId, active - 1);
 }
 
+/**
+ * Executes a media download, prepares the result for Discord, and commits it to the reply.
+ * @param {Object} interaction - The Discord interaction associated with the media job.
+ * @param {Object} reply - The reply session used to report progress and deliver the result.
+ * @param {Object} request - The media request, including its URL, output type, and compression preference.
+ */
 async function runMediaJob(interaction, reply, request) {
     const controller = new AbortController();
     const signal = AbortSignal.any([controller.signal, tempOwnershipSignal]);
@@ -148,6 +154,10 @@ async function enqueue(interaction, reply, request) {
     }
 }
 
+/**
+ * Handles a media command by validating its options, deferring the Discord reply, and queuing the requested job.
+ * @param {import("discord.js").ChatInputCommandInteraction} interaction - The Discord command interaction containing the media URL and output options.
+ */
 export async function handleMediaCommand(interaction) {
     requireGuildDeliveryPermissions(interaction);
     const privateReply = interaction.inGuild() && !config.publicRepliesInGuilds;

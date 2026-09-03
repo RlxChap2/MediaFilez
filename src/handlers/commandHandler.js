@@ -23,6 +23,10 @@ function isUnknownInteraction(error) {
     return error?.code === 10062 || error?.rawError?.code === 10062;
 }
 
+/**
+ * Handles a chat input command interaction and dispatches supported commands.
+ * @param {import("discord.js").Interaction} interaction - The interaction to process.
+ */
 export async function handleCommand(interaction) {
     if (!interaction.isChatInputCommand()) return;
 

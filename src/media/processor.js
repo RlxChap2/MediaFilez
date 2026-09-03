@@ -28,6 +28,13 @@ function ensureFits(file, maxAttachmentBytes, outputType) {
     );
 }
 
+/**
+ * Prepares downloaded media for upload to Discord in the requested format and size.
+ * @param {Object} download - Downloaded media details, including its path, name, type, and size.
+ * @param {Object} options - Output format, size limit, temporary directory, compression, status, and cancellation options.
+ * @returns {Promise<Object>} Prepared file metadata with an optional processing note.
+ * @throws {Error} If the media type is unsupported, the requested format is incompatible, or the file exceeds the size limit without compression enabled.
+ */
 export async function prepareMediaForDiscord(download, options) {
     const {
         outputType: requestedOutputType,
@@ -137,6 +144,12 @@ export async function prepareMediaForDiscord(download, options) {
     return { ...file, note };
 }
 
+/**
+ * Retrieves media metadata without propagating metadata lookup errors.
+ * @param {string} filePath - The path to the media file.
+ * @param {Object} [options] - Options for retrieving media metadata.
+ * @returns {Promise<Object|null>} The media metadata, or `null` if retrieval fails.
+ */
 export async function getSafeMediaInfo(filePath, options = {}) {
     try {
         return await getMediaInfo(filePath, options);

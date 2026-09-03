@@ -7,6 +7,10 @@ import { DownloadMethodError } from "../../utils/errors.js";
 import { ProcessExecutionError, runProcess } from "../../utils/process.js";
 import { recoverArtifact } from "../artifact.js";
 
+/**
+ * Selects the gallery-dl executable path from configuration, a bundled binary, or the system PATH.
+ * @returns {string} The configured path, bundled executable path, or `"gallery-dl"` for PATH resolution.
+ */
 export function resolveGalleryDlPath() {
     if (config.galleryDlPath) return config.galleryDlPath;
     const projectRoot = fileURLToPath(new URL("../../../", import.meta.url));
@@ -44,6 +48,14 @@ function processMessage(error) {
     return lines.findLast((line) => /error|failed|unsupported/i.test(line)) || lines.at(-1) || error.message;
 }
 
+/**
+ * Builds the gallery-dl arguments for downloading media from a source URL.
+ * @param {string} rawUrl - The source URL to download.
+ * @param {string} attemptDir - The directory where gallery-dl stores output and metadata.
+ * @param {Object} [options] - Download options.
+ * @param {number} [options.maxBytes] - Maximum allowed file size in bytes.
+ * @return {string[]} The gallery-dl command-line arguments.
+ */
 export function galleryDlArgs(rawUrl, attemptDir, options = {}) {
     const maxBytes = options.maxBytes ?? config.maxDownloadBytes;
     const args = [
@@ -70,6 +82,15 @@ export function galleryDlArgs(rawUrl, attemptDir, options = {}) {
     return args;
 }
 
+/**
+ * Downloads a playable artifact from a URL using gallery-dl.
+ * @param {string} rawUrl - The source URL to download.
+ * @param {string} attemptDir - Directory used for download output and metadata.
+ * @param {Object} [options] - Download and artifact recovery options.
+ * @returns {Promise<Object>} The recovered artifact with gallery-dl method information, source URL, metadata, and process-error recovery status.
+ * @throws {Error} If the download is cancelled.
+ * @throws {DownloadMethodError} If gallery-dl fails or produces no playable file.
+ */
 export async function downloadWithGalleryDl(rawUrl, attemptDir, options = {}) {
     const args = galleryDlArgs(rawUrl, attemptDir, options);
 

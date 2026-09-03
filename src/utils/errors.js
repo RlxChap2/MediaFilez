@@ -27,6 +27,13 @@ export class DeliveryUnknownError extends Error {
     }
 }
 
+/**
+ * Creates an error intended for presentation to the user.
+ * @param {string} message - The message describing the error.
+ * @param {string} [code="USER_ERROR"] - The error code.
+ * @param {Object} [options] - Additional error options.
+ * @returns {UserFacingError} The configured user-facing error.
+ */
 export function userError(message, code = "USER_ERROR", options = {}) {
     return new UserFacingError(message, { code, ...options });
 }

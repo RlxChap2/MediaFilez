@@ -114,6 +114,12 @@ export function selectCobaltDirectoryEndpoints(response, rawUrl) {
     return uniqueEndpoints(endpoints);
 }
 
+/**
+ * Retrieves Cobalt directory endpoints applicable to a source URL.
+ * @param {AbortSignal|null} signal - Optional signal used to cancel the directory request.
+ * @param {string} rawUrl - Source URL used to select matching service endpoints.
+ * @return {Promise<string[]>} Matching directory endpoint URLs, or an empty array when unavailable.
+ */
 async function directoryEndpoints(signal, rawUrl) {
     if (!config.cobaltDirectoryEnabled) return [];
     if (directoryCache.expiresAt > Date.now()) {
@@ -139,6 +145,13 @@ async function directoryEndpoints(signal, rawUrl) {
     }
 }
 
+/**
+ * Build the request payload for downloading media through Cobalt.
+ * @param {string} rawUrl - The source media URL.
+ * @param {string} outputType - The requested output type, such as audio or video.
+ * @param {number} targetBytes - The target output size used to select video quality.
+ * @return {Object} The Cobalt request payload.
+ */
 export function cobaltRequestPayload(rawUrl, outputType, targetBytes) {
     const preferredHeight = ["auto", "video"].includes(outputType) ? preferredVideoHeight(targetBytes) : null;
     return {

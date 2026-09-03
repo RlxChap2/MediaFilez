@@ -18,7 +18,7 @@ The command has four output choices:
 - Instagram has a direct embed-proxy fallback. The default converts `instagram.com` to `kkkinstagram.com`, then downloads the returned media through the same redirect, SSRF, size, and signature checks as any other URL.
 - Unknown pages gain a metadata extractor for Open Graph, Twitter card, and HTML media tags.
 - Share-link wrappers and JSON-LD `contentUrl` fields feed the guarded direct downloader. Reddit posts first use the first-party embed path, then a configurable public embed relay when Reddit blocks the bot server's address.
-- Multiple Cobalt endpoints rotate across jobs. A failed endpoint enters a short cooldown so every queued job does not wait on the same dead host.
+- Multiple Cobalt endpoints are tried in order. A failed endpoint enters a short cooldown so queued jobs can skip the dead host.
 - Cobalt now covers its full documented host set in the planner and requests a target-aware video quality instead of always requesting the largest source.
 - External downloaders run only for recognized public platforms. Unknown pages and direct links stay inside the DNS-, redirect-, and byte-guarded HTTP engines, and gallery-dl enforces the byte ceiling during transfer.
 - The queue accepts four jobs by default and two jobs per user. Both values remain configurable.
