@@ -161,7 +161,10 @@ export async function extractAudio(inputPath, outputDir, targetSizeBytes, option
         );
     }
 
-    const outputPath = path.join(outputDir, "audio.mp3");
+    let outputPath = path.join(outputDir, options.outputFileName || "audio.mp3");
+    if (path.resolve(outputPath) === path.resolve(inputPath)) {
+        outputPath = path.join(outputDir, "converted-audio.mp3");
+    }
 
     await runFFmpeg(
         ["-i", inputPath, "-vn", "-c:a", "libmp3lame", "-b:a", `${kbps}k`, "-ar", "44100", "-y", outputPath],
@@ -170,6 +173,59 @@ export async function extractAudio(inputPath, outputDir, targetSizeBytes, option
 
     await fs.access(outputPath);
     return outputPath;
+}
+
+export async function compressImage(inputPath, outputDir, targetSizeBytes, options = {}) {
+    const baseName = path.basename(inputPath, path.extname(inputPath));
+    let outputPath = path.join(outputDir, `fit-${baseName}.jpg`);
+    if (path.resolve(outputPath) === path.resolve(inputPath)) {
+        outputPath = path.join(outputDir, `fit-${baseName}-converted.jpg`);
+    }
+    const attempts = [
+        { maxWidth: 4096, quality: 2 },
+        { maxWidth: 4096, quality: 5 },
+        { maxWidth: 3072, quality: 5 },
+        { maxWidth: 2048, quality: 6 },
+        { maxWidth: 1600, quality: 7 },
+        { maxWidth: 1280, quality: 8 },
+        { maxWidth: 960, quality: 10 },
+        { maxWidth: 640, quality: 12 },
+        { maxWidth: 480, quality: 16 },
+    ];
+
+    for (const attempt of attempts) {
+        await options.onStage?.(`Compressing image at up to ${attempt.maxWidth}px`);
+        await fs.rm(outputPath, { force: true });
+        await runFFmpeg(
+            [
+                "-i",
+                inputPath,
+                "-frames:v",
+                "1",
+                "-vf",
+                `scale=min(iw\\,${attempt.maxWidth}):-2`,
+                "-q:v",
+                String(attempt.quality),
+                "-map_metadata",
+                "-1",
+                "-y",
+                outputPath,
+            ],
+            options,
+        );
+        const stat = await fs.stat(outputPath);
+        if (stat.size <= targetSizeBytes) {
+            log.info(`Image fitting produced ${formatBytes(stat.size)} at up to ${attempt.maxWidth}px.`);
+            return outputPath;
+        }
+    }
+
+    const stat = await fs.stat(outputPath);
+    await fs.rm(outputPath, { force: true });
+    throw userError(
+        `The compressed image is still ${formatBytes(stat.size)}, above the upload target of ${formatBytes(targetSizeBytes)}.`,
+        "FILE_TOO_LARGE",
+    );
 }
 
 function videoBitratesForTarget(info, targetSizeBytes, scale = 0.9) {
