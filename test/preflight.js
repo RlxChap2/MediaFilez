@@ -99,7 +99,11 @@ const checks = [
     ["ffmpeg", await commandOk(ffmpegPaths.ffmpeg, ["-version"]), false],
     ["ffprobe", await commandOk(ffmpegPaths.ffprobe, ["-version"]), false],
     ["yt-dlp", await ytDlpOk(), true],
-    ["gallery-dl", config.galleryDlEnabled ? await commandOk(resolveGalleryDlPath()) : { ok: true, detail: "disabled" }, false],
+    [
+        "gallery-dl",
+        config.galleryDlEnabled ? await commandOk(resolveGalleryDlPath()) : { ok: true, detail: "disabled" },
+        false,
+    ],
     ["cookie source", await cookieFileOk(), false],
     ["Cobalt", await cobaltOk(), false],
     ["YouTube.js", { ok: config.youtubeJsEnabled, detail: config.youtubeJsEnabled ? "enabled" : "disabled" }, false],

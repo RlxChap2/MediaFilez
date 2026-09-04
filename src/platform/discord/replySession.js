@@ -1,8 +1,9 @@
-import { AttachmentBuilder } from "discord.js";
+import { setTimeout as sleep } from "node:timers/promises";
 import { config } from "../../config.js";
 import { DeliveryUnknownError, messageForError, userError } from "../../utils/errors.js";
 import { formatBytes, formatElapsed } from "../../utils/format.js";
 import { log } from "../../utils/logger.js";
+import { uploadDiscordReply } from "./discordUpload.js";
 
 const PHASE_COPY = {
     queued: "Queued",
@@ -15,9 +16,10 @@ const PHASE_COPY = {
 function progressText(progress) {
     if (!progress) return "";
     if (Number.isFinite(progress.percent)) {
-        const bytes = progress.downloadedBytes && progress.totalBytes
-            ? ` | ${formatBytes(progress.downloadedBytes)} / ${formatBytes(progress.totalBytes)}`
-            : "";
+        const bytes =
+            progress.downloadedBytes && progress.totalBytes
+                ? ` | ${formatBytes(progress.downloadedBytes)} / ${formatBytes(progress.totalBytes)}`
+                : "";
         return ` | ${Math.min(progress.percent, 100).toFixed(1)}%${bytes}`;
     }
     if (progress.downloadedBytes) {
@@ -70,20 +72,16 @@ function errorChain(error) {
 }
 
 function isRetryableUploadError(error) {
-    const retryableCodes = new Set([
-        "UND_ERR_SOCKET",
-        "UND_ERR_CONNECT_TIMEOUT",
-        "ECONNRESET",
-        "ETIMEDOUT",
-        "EPIPE",
-    ]);
-    return errorChain(error).some((item) => (
-        item?.name === "AbortError"
-        || item?.name === "SocketError"
-        || retryableCodes.has(item?.code)
-        || Number(item?.status) >= 500
-        || /other side closed|socket closed|connection reset|timed out/i.test(item?.message || "")
-    ));
+    const retryableCodes = new Set(["UND_ERR_SOCKET", "UND_ERR_CONNECT_TIMEOUT", "ECONNRESET", "ETIMEDOUT", "EPIPE"]);
+    return errorChain(error).some(
+        (item) =>
+            item?.name === "AbortError" ||
+            item?.name === "SocketError" ||
+            retryableCodes.has(item?.code) ||
+            Number(item?.status) === 429 ||
+            Number(item?.status) >= 500 ||
+            /other side closed|socket closed|connection reset|timed out/i.test(item?.message || ""),
+    );
 }
 
 function uploadErrorSummary(error) {
@@ -102,7 +100,11 @@ function uploadFailure(error, attempts) {
         );
     }
     if (codes.includes(10015) || codes.includes(10062)) {
-        return userError("The Discord interaction expired before the upload finished. Try the command again.", "INTERACTION_EXPIRED", { cause: error });
+        return userError(
+            "The Discord interaction expired before the upload finished. Try the command again.",
+            "INTERACTION_EXPIRED",
+            { cause: error },
+        );
     }
     return userError(
         `Discord closed the upload connection before accepting the file after ${attempts} attempt${attempts === 1 ? "" : "s"}. Try the command again.`,
@@ -111,8 +113,22 @@ function uploadFailure(error, attempts) {
     );
 }
 
-function wait(milliseconds) {
-    return new Promise((resolve) => setTimeout(resolve, milliseconds));
+function jobTimeoutFailure(cause) {
+    return userError(
+        "The job timed out before Discord accepted the upload. Try again with a smaller file.",
+        "JOB_TIMEOUT",
+        { cause },
+    );
+}
+
+async function wait(milliseconds, signal) {
+    try {
+        await sleep(milliseconds, undefined, signal ? { signal } : undefined);
+        return true;
+    } catch (error) {
+        if (signal?.aborted && error.name === "AbortError") return false;
+        throw error;
+    }
 }
 
 export class ReplySession {
@@ -124,8 +140,23 @@ export class ReplySession {
         this.intervalMs = options.intervalMs ?? config.statusUpdateIntervalMs;
         this.uploadAttempts = options.uploadAttempts ?? config.discordUploadAttempts;
         this.uploadRetryDelayMs = options.uploadRetryDelayMs ?? config.discordUploadRetryDelayMs;
+        this.upload = options.upload ?? uploadDiscordReply;
         this.wait = options.wait ?? wait;
         this.pendingUpdate = Promise.resolve();
+    }
+
+    /**
+     * Waits before another Discord request while preserving the whole-job deadline.
+     * @param {number} milliseconds - Requested backoff duration.
+     * @param {AbortSignal} [signal] - Whole-job cancellation signal.
+     * @param {Error} cause - Upload error that triggered the retry.
+     * @returns {Promise<void>}
+     */
+    async waitBeforeRetry(milliseconds, signal, cause) {
+        const completed = await this.wait(milliseconds, signal);
+        if (completed !== false && !signal?.aborted) return;
+        this.state = "open";
+        throw jobTimeoutFailure(cause);
     }
 
     update(status, options = {}) {
@@ -141,18 +172,24 @@ export class ReplySession {
         return this.pendingUpdate;
     }
 
-    async commit(output, details) {
+    async commit(output, details, options = {}) {
         if (this.state !== "open") throw new Error(`Cannot commit a reply in state ${this.state}.`);
         await this.pendingUpdate;
         this.state = "committing";
 
         for (let attempt = 1; attempt <= this.uploadAttempts; attempt += 1) {
-            const attachment = new AttachmentBuilder(output.filePath, { name: output.fileName });
-            const payload = { content: deliveredCopy(output, details), files: [attachment] };
-            log.info(`Discord upload attempt ${attempt}/${this.uploadAttempts}: ${output.fileName} (${formatBytes(output.sizeBytes)}).`);
+            const payload = {
+                content: deliveredCopy(output, details),
+                filePath: output.filePath,
+                fileName: output.fileName,
+                sizeBytes: output.sizeBytes,
+            };
+            log.info(
+                `Discord upload attempt ${attempt}/${this.uploadAttempts}: ${output.fileName} (${formatBytes(output.sizeBytes)}).`,
+            );
 
             try {
-                await this.interaction.editReply(payload);
+                await this.upload(this.interaction, payload, { signal: options.signal });
                 this.state = "committed";
                 return;
             } catch (uploadError) {
@@ -162,7 +199,9 @@ export class ReplySession {
                         const message = await this.interaction.fetchReply();
                         if (hasExpectedAttachment(message, output)) {
                             this.state = "committed";
-                            log.warn("Discord upload call failed, but the attachment is present on the original response.");
+                            log.warn(
+                                "Discord upload call failed, but the attachment is present on the original response.",
+                            );
                             return;
                         }
                         verificationError = null;
@@ -170,7 +209,11 @@ export class ReplySession {
                     } catch (error) {
                         verificationError = error;
                         if (verification < 3 && isRetryableUploadError(error)) {
-                            await this.wait(this.uploadRetryDelayMs * verification);
+                            await this.waitBeforeRetry(
+                                this.uploadRetryDelayMs * verification,
+                                options.signal,
+                                uploadError,
+                            );
                             continue;
                         }
                         break;
@@ -185,6 +228,11 @@ export class ReplySession {
                     );
                 }
 
+                if (options.signal?.aborted) {
+                    this.state = "open";
+                    throw jobTimeoutFailure(uploadError);
+                }
+
                 if (!isRetryableUploadError(uploadError) || attempt === this.uploadAttempts) {
                     this.state = "open";
                     throw uploadFailure(uploadError, attempt);
@@ -193,7 +241,11 @@ export class ReplySession {
                 log.warn(
                     `Discord did not accept upload attempt ${attempt}/${this.uploadAttempts} (${uploadErrorSummary(uploadError)}); retrying after verification.`,
                 );
-                await this.wait(this.uploadRetryDelayMs * attempt);
+                await this.waitBeforeRetry(
+                    Math.max(this.uploadRetryDelayMs * attempt, uploadError.retryAfterMs || 0),
+                    options.signal,
+                    uploadError,
+                );
             }
         }
     }

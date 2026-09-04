@@ -12,6 +12,8 @@ import { ProcessExecutionError, runProcess } from "./process.js";
 
 const execFileAsync = promisify(execFile);
 let ffmpegAvailability = null;
+const MAX_IMAGE_DIMENSION = 8192;
+const MAX_IMAGE_PIXELS = 4096 * 4096;
 
 export function resolveFFmpegPaths() {
     return {
@@ -147,6 +149,15 @@ function audioBitrateForTarget(duration, targetSizeBytes) {
     return Math.min(192, Math.max(48, kbps));
 }
 
+/**
+ * Extracts the audio stream as MP3 using a bitrate derived from the target size.
+ * @param {string} inputPath - Path to the source media file.
+ * @param {string} outputDir - Directory for the converted audio file.
+ * @param {number} targetSizeBytes - Maximum desired output size in bytes.
+ * @param {Object} [options={}] - Conversion options, including an optional output file name.
+ * @param {string} [options.outputFileName] - Name of the output audio file.
+ * @return {Promise<string>} The path to the converted MP3 file.
+ */
 export async function extractAudio(inputPath, outputDir, targetSizeBytes, options = {}) {
     const info = await getMediaInfo(inputPath, options);
     if (!info.hasAudio) {
@@ -161,7 +172,10 @@ export async function extractAudio(inputPath, outputDir, targetSizeBytes, option
         );
     }
 
-    const outputPath = path.join(outputDir, "audio.mp3");
+    let outputPath = path.join(outputDir, options.outputFileName || "audio.mp3");
+    if (path.resolve(outputPath) === path.resolve(inputPath)) {
+        outputPath = path.join(outputDir, "converted-audio.mp3");
+    }
 
     await runFFmpeg(
         ["-i", inputPath, "-vn", "-c:a", "libmp3lame", "-b:a", `${kbps}k`, "-ar", "44100", "-y", outputPath],
@@ -172,6 +186,91 @@ export async function extractAudio(inputPath, outputDir, targetSizeBytes, option
     return outputPath;
 }
 
+/**
+ * Compresses an image to JPEG until it meets the target file size.
+ * @param {string} inputPath - The path to the source image.
+ * @param {string} outputDir - The directory for the compressed image.
+ * @param {number} targetSizeBytes - The maximum permitted output size in bytes.
+ * @param {Object} [options] - Optional processing and progress-reporting options.
+ * @return {Promise<string>} The path to the compressed JPEG image.
+ */
+export async function compressImage(inputPath, outputDir, targetSizeBytes, options = {}) {
+    const info = await getMediaInfo(inputPath, options);
+    const imagePixels = info.width * info.height;
+    if (
+        !Number.isSafeInteger(imagePixels) ||
+        info.width <= 0 ||
+        info.height <= 0 ||
+        info.width > MAX_IMAGE_DIMENSION ||
+        info.height > MAX_IMAGE_DIMENSION ||
+        imagePixels > MAX_IMAGE_PIXELS
+    ) {
+        throw userError(
+            `The image dimensions (${info.width}x${info.height}) are too large to process safely. The limit is ${MAX_IMAGE_DIMENSION}px per side and ${MAX_IMAGE_PIXELS.toLocaleString("en-US")} total pixels.`,
+            "IMAGE_DIMENSIONS_TOO_LARGE",
+        );
+    }
+
+    const baseName = path.basename(inputPath, path.extname(inputPath));
+    let outputPath = path.join(outputDir, `fit-${baseName}.jpg`);
+    if (path.resolve(outputPath) === path.resolve(inputPath)) {
+        outputPath = path.join(outputDir, `fit-${baseName}-converted.jpg`);
+    }
+    const attempts = [
+        { maxWidth: 4096, quality: 2 },
+        { maxWidth: 4096, quality: 5 },
+        { maxWidth: 3072, quality: 5 },
+        { maxWidth: 2048, quality: 6 },
+        { maxWidth: 1600, quality: 7 },
+        { maxWidth: 1280, quality: 8 },
+        { maxWidth: 960, quality: 10 },
+        { maxWidth: 640, quality: 12 },
+        { maxWidth: 480, quality: 16 },
+    ];
+
+    for (const attempt of attempts) {
+        await options.onStage?.(`Compressing image at up to ${attempt.maxWidth}px`);
+        await fs.rm(outputPath, { force: true });
+        await runFFmpeg(
+            [
+                "-i",
+                inputPath,
+                "-frames:v",
+                "1",
+                "-vf",
+                `scale=w=min(iw\\,${attempt.maxWidth}):h=min(ih\\,${attempt.maxWidth}):force_original_aspect_ratio=decrease:force_divisible_by=2`,
+                "-q:v",
+                String(attempt.quality),
+                "-map_metadata",
+                "-1",
+                "-y",
+                outputPath,
+            ],
+            options,
+        );
+        const stat = await fs.stat(outputPath);
+        if (stat.size <= targetSizeBytes) {
+            log.info(`Image fitting produced ${formatBytes(stat.size)} at up to ${attempt.maxWidth}px.`);
+            return outputPath;
+        }
+    }
+
+    const stat = await fs.stat(outputPath);
+    await fs.rm(outputPath, { force: true });
+    throw userError(
+        `The compressed image is still ${formatBytes(stat.size)}, above the upload target of ${formatBytes(targetSizeBytes)}.`,
+        "FILE_TOO_LARGE",
+    );
+}
+
+/**
+ * Calculates audio and video bitrates for fitting a video within a target size.
+ * @param {Object} info - Video metadata, including duration and audio presence.
+ * @param {number} targetSizeBytes - Maximum output size in bytes.
+ * @param {number} [scale=0.9] - Fraction of the target size available for media data.
+ * @returns {{videoKbps: number, audioKbps: number}} The calculated video and audio bitrates in kilobits per second.
+ * @throws {Error} If the video bitrate would be too low for a playable video.
+ */
 function videoBitratesForTarget(info, targetSizeBytes, scale = 0.9) {
     const availableBitrate = Math.floor((targetSizeBytes * 8 * scale) / info.duration);
     let audioBitrate = 0;

@@ -29,7 +29,9 @@ const DEFAULT_ENGINES = new Map([
 ]);
 
 function compactEngineError(message) {
-    const detail = String(message || "Unknown engine failure").replace(/\s+/g, " ").trim();
+    const detail = String(message || "Unknown engine failure")
+        .replace(/\s+/g, " ")
+        .trim();
     if (/you(?:'|’)ve been blocked by network security/i.test(detail)) {
         return "The source blocked this server's network address.";
     }
@@ -75,6 +77,14 @@ function publicFailure(attempts, outputType) {
     return `No playable ${outputLabel} came back after trying: ${engines}. The post may be unavailable, expired, or unsupported.`;
 }
 
+/**
+ * Downloads media from a public HTTP URL using the configured engine fallback plan.
+ * @param {string} rawUrl - The media URL to download.
+ * @param {string} jobDir - Directory where the downloaded artifact is committed.
+ * @param {Object} [options] - Download settings, including output type, size limit, engine plan, cancellation signal, and status callback.
+ * @return {Promise<Object>} The committed artifact and download metadata, including the selected method, attempt history, and recovery status.
+ * @throws {Error} If the URL is invalid, the operation is cancelled, or all download engines fail.
+ */
 export async function downloadMedia(rawUrl, jobDir, options = {}) {
     await assertPublicHttpUrl(rawUrl);
     const outputType = options.outputType ?? "video";
@@ -120,7 +130,7 @@ export async function downloadMedia(rawUrl, jobDir, options = {}) {
             };
         } catch (error) {
             if (error instanceof UserFacingError && error.stopFallback) throw error;
-            if (error?.name === "AbortError" || options.signal?.aborted) throw abortError();
+            if (options.signal?.aborted) throw abortError();
 
             const recovered = await recoverArtifact(attemptDir, { outputType, maxBytes, signal: options.signal });
             if (recovered) {
@@ -136,7 +146,9 @@ export async function downloadMedia(rawUrl, jobDir, options = {}) {
                 };
             }
 
-            const detail = compactEngineError(error instanceof DownloadMethodError ? error.publicMessage : error.message);
+            const detail = compactEngineError(
+                error instanceof DownloadMethodError ? error.publicMessage : error.message,
+            );
             attempts.push({ engine: engineName, error: detail, elapsedMs: performance.now() - startedAt });
             log.warn(`${engineName} failed: ${detail}`);
             await fs.rm(attemptDir, { recursive: true, force: true });

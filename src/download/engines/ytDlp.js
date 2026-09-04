@@ -50,6 +50,12 @@ async function readMetadata(attemptDir) {
     }
 }
 
+/**
+ * Creates a handler that reports parsed download progress records.
+ * @param {Object} options - Progress handler options.
+ * @param {Function} [options.onProgress] - Callback invoked with downloaded bytes, total bytes, and percentage.
+ * @returns {Function} A handler that processes download progress lines.
+ */
 function progressHandler(options) {
     return (line) => {
         if (!line.startsWith("download:")) return;
@@ -62,9 +68,40 @@ function progressHandler(options) {
     };
 }
 
+/**
+ * Prepares a private copy of the configured media cookie file for yt-dlp.
+ * @param {string} attemptDir - The directory where the copied cookie file is created.
+ * @return {Promise<string|null>} The copied cookie file path, or `null` when no media cookie file is configured.
+ */
+async function prepareCookieFile(attemptDir) {
+    if (!config.mediaCookiesFile) return null;
+
+    const cookieFile = path.join(attemptDir, ".yt-dlp-cookies.txt");
+    const contents = await fs.readFile(config.mediaCookiesFile);
+    await fs.writeFile(cookieFile, contents, { flag: "wx", mode: 0o600 });
+    await fs.chmod(cookieFile, 0o600);
+    return cookieFile;
+}
+
+/**
+ * Downloads media or a thumbnail from a URL using yt-dlp.
+ * @param {string} rawUrl - The source URL to download.
+ * @param {string} attemptDir - Directory where the downloaded artifact and metadata are stored.
+ * @param {Object} [options] - Download settings and execution callbacks.
+ * @param {number} [options.maxBytes] - Maximum allowed download size in bytes.
+ * @param {string} [options.outputType] - Requested output type, such as video, audio, thumbnail, or image.
+ * @param {number} [options.targetBytes] - Target size used when selecting a media format.
+ * @param {AbortSignal} [options.signal] - Signal used to cancel the download.
+ * @param {Function} [options.onProgress] - Callback invoked with download progress updates.
+ * @param {Function} [options.processRunner] - Process runner used instead of the default runner.
+ * @returns {Promise<Object>} The recovered artifact details, source URL, metadata, download method, and process-error recovery status.
+ * @throws {Error} With name `AbortError` when the download is cancelled.
+ * @throws {Error} When yt-dlp fails without producing a recoverable artifact.
+ */
 export async function downloadWithYtDlp(rawUrl, attemptDir, options = {}) {
     const maxBytes = options.maxBytes ?? config.maxDownloadBytes;
     const outputType = options.outputType ?? "video";
+    const cookieFile = await prepareCookieFile(attemptDir);
     const args = [
         "--no-config",
         "--no-playlist",
@@ -99,7 +136,7 @@ export async function downloadWithYtDlp(rawUrl, attemptDir, options = {}) {
         path.join(attemptDir, "%(title).120B_%(id).40B.%(ext)s"),
     ];
     if (config.ytdlpImpersonate) args.push("--impersonate", config.ytdlpImpersonate);
-    if (config.mediaCookiesFile) args.push("--cookies", config.mediaCookiesFile);
+    if (cookieFile) args.push("--cookies", cookieFile);
     else if (config.ytdlpCookiesFromBrowser) args.push("--cookies-from-browser", config.ytdlpCookiesFromBrowser);
 
     if (outputType === "thumbnail" || outputType === "image") {
@@ -112,7 +149,7 @@ export async function downloadWithYtDlp(rawUrl, attemptDir, options = {}) {
 
     let processError = null;
     try {
-        await runProcess(resolveYtDlpPath(), args, {
+        await (options.processRunner ?? runProcess)(resolveYtDlpPath(), args, {
             timeoutMs: config.ytdlpTimeoutMs,
             signal: options.signal,
             onStdoutLine: progressHandler(options),

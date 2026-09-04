@@ -3,9 +3,11 @@ import { config, requireConfig } from "./config.js";
 import { formatBytes } from "./utils/format.js";
 import { log } from "./utils/logger.js";
 import { checkFFmpeg } from "./utils/ffmpeg.js";
+import { cleanupStaleTempDirs } from "./utils/temp.js";
 import { handleCommand } from "./handlers/commandHandler.js";
 
 requireConfig(["botToken"]);
+await cleanupStaleTempDirs();
 
 const ffmpegReady = await checkFFmpeg();
 if (!ffmpegReady) {

@@ -27,9 +27,7 @@ test("keeps image metadata separate from video candidates", () => {
 });
 
 test("unwraps encoded media URLs from share-link query parameters", () => {
-    const baseUrl = new URL(
-        "https://www.reddit.com/media?url=https%3A%2F%2Fi.redd.it%2F6q518hjjrajh1.png",
-    );
+    const baseUrl = new URL("https://www.reddit.com/media?url=https%3A%2F%2Fi.redd.it%2F6q518hjjrajh1.png");
     const metadata = extractPageMetadata("<html></html>", baseUrl, "image");
 
     assert.deepEqual(metadata.candidates, ["https://i.redd.it/6q518hjjrajh1.png"]);

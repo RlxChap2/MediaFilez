@@ -27,12 +27,23 @@ export class DeliveryUnknownError extends Error {
     }
 }
 
+/**
+ * Creates an error intended for presentation to the user.
+ * @param {string} message - The message describing the error.
+ * @param {string} [code="USER_ERROR"] - The error code.
+ * @param {Object} [options] - Additional error options.
+ * @returns {UserFacingError} The configured user-facing error.
+ */
 export function userError(message, code = "USER_ERROR", options = {}) {
     return new UserFacingError(message, { code, ...options });
 }
 
+export function isUserFacingError(error) {
+    return error instanceof UserFacingError || error?.name === "UserFacingError";
+}
+
 export function messageForError(error) {
-    if (error instanceof UserFacingError || error?.name === "UserFacingError") return error.message;
+    if (isUserFacingError(error)) return error.message;
     if (error instanceof DeliveryUnknownError || error?.name === "DeliveryUnknownError") return error.message;
     if (typeof error?.publicMessage === "string") return error.publicMessage;
     if (error?.name === "TimeoutError") return "The job timed out. Try a smaller file or a faster source URL.";

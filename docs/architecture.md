@@ -22,12 +22,12 @@ interaction
   -> engine resolution and transfer
   -> signature and FFprobe validation
   -> atomic artifact commit
-  -> optional image/audio/video processing
-  -> one verified Discord attachment edit
+  -> optional image/audio/video fitting
+  -> one verified streaming Discord attachment edit
   -> temporary directory cleanup
 ```
 
-`AbortController` owns the whole job deadline. The signal reaches HTTP requests, child processes, FFmpeg, metadata resolution, and status callbacks. Cleanup runs after a committed reply or terminal failure.
+`AbortController` owns the whole job deadline. The signal reaches HTTP requests, child processes, FFmpeg, metadata resolution, and the final Discord upload. Cleanup runs after a committed reply or terminal failure. Startup also removes matching job directories left by an uncatchable process exit.
 
 ## Planning
 
@@ -43,9 +43,9 @@ An engine receives a source URL, an empty attempt directory, and job options. It
 
 Engines write partial data with an excluded extension and keep final data in their attempt directory. They do not move output into `completed`, choose another adapter, process for Discord, or upload replies.
 
-The orchestrator validates a returned candidate. If a process throws, the orchestrator scans only that attempt directory and can recover a complete artifact. Invalid attempts are deleted before the next engine starts.
+The orchestrator validates a returned candidate. If a process throws, the orchestrator scans only that attempt directory and can recover a complete artifact. Invalid attempts are deleted before the next engine starts. A timeout owned by one engine is an ordinary failed attempt; fallback stops only when the shared job signal is aborted.
 
-Image output accepts a source image or a valid video. The media processor copies the image or extracts one frame. This keeps the command at three choices without weakening artifact checks.
+Image output accepts a source image or a valid video. The media processor copies the image or extracts one frame. Oversized images use progressive JPEG quality and resolution attempts; oversized audio uses a target-aware MP3 bitrate. This keeps the command choices small without weakening artifact or size checks.
 
 ## Generic page metadata
 
@@ -59,7 +59,7 @@ The Reddit adapter resolves short links through guarded redirects, derives the m
 
 ## Cobalt endpoint state
 
-Cobalt rotates the starting endpoint across jobs, then falls through the remaining configured endpoints. A failed endpoint receives a local cooldown. Later jobs skip that endpoint while another configured endpoint is available. If every endpoint is cooling down, the earliest retry is attempted so the engine can recover without a restart.
+Cobalt tries configured endpoints in order. A failed endpoint receives a local cooldown, so later jobs skip it while another endpoint is available. If every endpoint is cooling down, the earliest retry is attempted so the engine can recover without a restart.
 
 The directory source is disabled by default. Hosted instances can impose authentication and access policies that MediaFilez cannot infer. Directory endpoints never receive the configured API key, are checked again for public DNS addresses when their socket opens, and cannot return unbounded JSON bodies.
 
@@ -68,16 +68,16 @@ The directory source is disabled by default. Hosted instances can impose authent
 `ReplySession` uses `open`, `committing`, `committed`, `failed`, and `unknown` states.
 
 - Status edits run only while open.
-- Commit sends final text and one attachment together.
+- Commit sends final text and one attachment together through a length-delimited multipart stream.
 - A rejected upload call triggers `fetchReply` verification.
 - A confirmed attachment counts as success.
 - Failed verification leaves the response unknown and blocks error replacement.
 
-The processing target is the minimum of Discord's interaction limit, the operator ceiling, and 500 MiB. Upload retries begin only after Discord confirms the expected attachment is absent.
+The processing target is the minimum of Discord's interaction limit, the operator ceiling, and 500 MiB. Upload retries begin only after Discord confirms the expected attachment is absent. The upload payload disables mention parsing and sanitizes its content-disposition filename independently of earlier filename checks.
 
 ## Tool resolution
 
-yt-dlp comes from `youtube-dl-exec`. FFmpeg and FFprobe use explicit environment paths first, then packaged binaries. gallery-dl uses `GALLERY_DL_PATH`, a verified `.tools` build, or `gallery-dl` on `PATH`, in that order.
+yt-dlp comes from `youtube-dl-exec`. A configured cookie source is copied into the isolated attempt with mode `0600` before yt-dlp runs, because yt-dlp writes its jar on exit. FFmpeg and FFprobe use explicit environment paths first, then packaged binaries. gallery-dl uses `GALLERY_DL_PATH`, a verified `.tools` build, or `gallery-dl` on `PATH`, in that order.
 
 Docker sets system FFmpeg paths and installs gallery-dl into its own Python environment. The local installer verifies the SHA-256 digest published with the selected gallery-dl build before replacing `.tools/gallery-dl`.
 
@@ -87,4 +87,4 @@ Initial URLs and every direct HTTP redirect resolve through public-address check
 
 Child processes use argument arrays and `shell: false`. Filenames pass through sanitization. Stream byte counts enforce the maximum even when a server omits or lies about `Content-Length`; gallery-dl also receives the same limit before it begins a transfer.
 
-Cookie files, relay URLs, Cobalt credentials, Discord tokens, and signed CDN URLs stay out of logs and source control.
+Cookie files, relay URLs, Cobalt credentials, Discord tokens, and signed CDN URLs stay out of logs and source control. The Discord interaction token is used only to build the fixed webhook endpoint and is never included in upload errors.

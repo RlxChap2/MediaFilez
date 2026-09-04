@@ -33,19 +33,23 @@ test("updates the managed command without overwriting an Entry Point command", a
     const result = await upsertGlobalCommands(rest, "app-id", [command]);
 
     assert.equal(result.length, 1);
-    assert.deepEqual(rest.calls.map(([method]) => method), ["get", "patch"]);
+    assert.deepEqual(
+        rest.calls.map(([method]) => method),
+        ["get", "patch"],
+    );
     assert.match(rest.calls[1][1], /media-id$/);
     assert.deepEqual(rest.calls[1][2].body, command);
 });
 
 test("creates the managed command when it does not exist", async () => {
-    const rest = createRest([
-        { id: "entry-id", name: "launch", type: 4, handler: 2 },
-    ]);
+    const rest = createRest([{ id: "entry-id", name: "launch", type: 4, handler: 2 }]);
     const command = { name: "media", description: "Download media", type: 1 };
 
     await upsertGlobalCommands(rest, "app-id", [command]);
 
-    assert.deepEqual(rest.calls.map(([method]) => method), ["get", "post"]);
+    assert.deepEqual(
+        rest.calls.map(([method]) => method),
+        ["get", "post"],
+    );
     assert.deepEqual(rest.calls[1][2].body, command);
 });

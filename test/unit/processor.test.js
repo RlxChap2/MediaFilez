@@ -5,7 +5,10 @@ import path from "node:path";
 import test from "node:test";
 import { prepareMediaForDiscord } from "../../src/media/processor.js";
 
-const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
+const PNG = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    "base64",
+);
 
 const cases = [
     { mediaKind: "video", extension: "mp4", contents: Buffer.from("video") },
@@ -21,19 +24,22 @@ for (const fixture of cases) {
         const filePath = path.join(dir, fileName);
         await fs.writeFile(filePath, fixture.contents);
 
-        const output = await prepareMediaForDiscord({
-            filePath,
-            fileName,
-            sizeBytes: fixture.contents.length,
-            mediaKind: fixture.mediaKind,
-            extension: fixture.extension,
-            isAudioOnly: fixture.mediaKind === "audio",
-        }, {
-            outputType: "auto",
-            tempDir: dir,
-            maxAttachmentBytes: 1024,
-            allowCompression: true,
-        });
+        const output = await prepareMediaForDiscord(
+            {
+                filePath,
+                fileName,
+                sizeBytes: fixture.contents.length,
+                mediaKind: fixture.mediaKind,
+                extension: fixture.extension,
+                isAudioOnly: fixture.mediaKind === "audio",
+            },
+            {
+                outputType: "auto",
+                tempDir: dir,
+                maxAttachmentBytes: 1024,
+                allowCompression: true,
+            },
+        );
 
         assert.equal(output.mediaKind, fixture.mediaKind);
         assert.ok(output.sizeBytes > 0);
@@ -47,18 +53,21 @@ test("auto applies video size rules to detected video", async (t) => {
     await fs.writeFile(filePath, Buffer.alloc(32));
 
     await assert.rejects(
-        prepareMediaForDiscord({
-            filePath,
-            fileName: "large.mp4",
-            sizeBytes: 32,
-            mediaKind: "video",
-            extension: "mp4",
-        }, {
-            outputType: "auto",
-            tempDir: dir,
-            maxAttachmentBytes: 16,
-            allowCompression: false,
-        }),
+        prepareMediaForDiscord(
+            {
+                filePath,
+                fileName: "large.mp4",
+                sizeBytes: 32,
+                mediaKind: "video",
+                extension: "mp4",
+            },
+            {
+                outputType: "auto",
+                tempDir: dir,
+                maxAttachmentBytes: 16,
+                allowCompression: false,
+            },
+        ),
         (error) => error.code === "FILE_TOO_LARGE" && /The video is/.test(error.message),
     );
 });

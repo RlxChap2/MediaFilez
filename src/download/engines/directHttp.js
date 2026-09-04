@@ -83,9 +83,19 @@ function hasErrorCode(error, code, seen = new Set()) {
 
 function responseHeader(response, name) {
     const value = response.headers[name.toLowerCase()];
-    return Array.isArray(value) ? value[0] : value ?? null;
+    return Array.isArray(value) ? value[0] : (value ?? null);
 }
 
+/**
+ * Requests media from an HTTP or HTTPS URL.
+ * @param {URL} url - The URL to request.
+ * @param {Object} options - Request configuration.
+ * @param {AbortSignal} options.signal - Signal used to cancel the request.
+ * @param {Set<string>} options.trustedHosts - Hostnames allowed to bypass public DNS resolution.
+ * @param {string} [options.referer] - Referer header value.
+ * @param {Object} [options.headers] - Additional request headers.
+ * @return {Promise<import("node:http").IncomingMessage>} The HTTP response.
+ */
 function requestMedia(url, options) {
     const transport = url.protocol === "https:" ? https : http;
     const trusted = options.trustedHosts.has(url.hostname.toLowerCase());

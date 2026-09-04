@@ -31,6 +31,11 @@ function addUrl(candidates, value, baseUrl) {
     }
 }
 
+/**
+ * Extracts HTTP(S) URLs embedded in the base URL's query parameters.
+ * @param {URL} baseUrl - The URL whose query-parameter values are inspected.
+ * @return {string[]} Distinct valid HTTP(S) URLs found in the query parameters.
+ */
 function wrappedUrlCandidates(baseUrl) {
     const candidates = [];
     for (const value of baseUrl.searchParams.values()) {
@@ -49,14 +54,22 @@ function wrappedUrlCandidates(baseUrl) {
     return candidates;
 }
 
+/**
+ * Extracts media URLs from JSON-LD scripts in an HTML document.
+ * @param {string} html - The HTML document to inspect.
+ * @param {string} baseUrl - The URL used to resolve extracted URLs.
+ * @param {string} outputType - The requested media type used to select JSON-LD fields.
+ * @return {string[]} Distinct HTTP(S) media URLs found in the document.
+ */
 function jsonLdCandidates(html, baseUrl, outputType) {
-    const acceptedKeys = {
-        auto: new Set(["contenturl", "embedurl", "thumbnailurl"]),
-        video: new Set(["contenturl", "embedurl"]),
-        audio: new Set(["contenturl"]),
-        image: new Set(["contenturl", "thumbnailurl"]),
-        thumbnail: new Set(["contenturl", "thumbnailurl"]),
-    }[outputType] ?? new Set();
+    const acceptedKeys =
+        {
+            auto: new Set(["contenturl", "embedurl", "thumbnailurl"]),
+            video: new Set(["contenturl", "embedurl"]),
+            audio: new Set(["contenturl"]),
+            image: new Set(["contenturl", "thumbnailurl"]),
+            thumbnail: new Set(["contenturl", "thumbnailurl"]),
+        }[outputType] ?? new Set();
     const candidates = [];
     let visitedValues = 0;
 
@@ -75,7 +88,9 @@ function jsonLdCandidates(html, baseUrl, outputType) {
         for (const [childKey, childValue] of Object.entries(value)) visit(childValue, childKey, depth + 1);
     }
 
-    for (const match of html.matchAll(/<script\b[^>]*type\s*=\s*(?:"application\/ld\+json"|'application\/ld\+json'|application\/ld\+json)[^>]*>([\s\S]*?)<\/script\s*>/gi)) {
+    for (const match of html.matchAll(
+        /<script\b[^>]*type\s*=\s*(?:"application\/ld\+json"|'application\/ld\+json'|application\/ld\+json)[^>]*>([\s\S]*?)<\/script\s*>/gi,
+    )) {
         try {
             visit(JSON.parse(decodeHtmlEntities(match[1]).trim()));
         } catch {

@@ -2,9 +2,9 @@ import PQueue from "p-queue";
 import { MessageFlags, PermissionFlagsBits } from "discord.js";
 import { config, DISCORD_HARD_MAX_BYTES } from "../config.js";
 import { FILE_LIMITS, OUTPUT_TYPES } from "../utils/constants.js";
-import { createRequestTempDir, cleanupTempDir } from "../utils/temp.js";
+import { createRequestTempDir, cleanupTempDir, tempOwnershipSignal } from "../utils/temp.js";
 import { formatBytes, formatElapsed } from "../utils/format.js";
-import { userError } from "../utils/errors.js";
+import { isUserFacingError, userError } from "../utils/errors.js";
 import { log } from "../utils/logger.js";
 import { downloadMedia } from "../download/orchestrator.js";
 import { prepareMediaForDiscord } from "../media/processor.js";
@@ -28,9 +28,7 @@ function missingGuildDeliveryPermissions(interaction, publicRepliesInGuilds = co
         required.push([PermissionFlagsBits.SendMessagesInThreads, "Send Messages in Threads"]);
     }
 
-    return required
-        .filter(([permission]) => !interaction.appPermissions.has(permission))
-        .map(([, label]) => label);
+    return required.filter(([permission]) => !interaction.appPermissions.has(permission)).map(([, label]) => label);
 }
 
 function requireGuildDeliveryPermissions(interaction) {
@@ -67,8 +65,15 @@ function releaseUserSlot(userId) {
     else activeByUser.set(userId, active - 1);
 }
 
+/**
+ * Executes a media download, prepares the result for Discord, and commits it to the reply.
+ * @param {Object} interaction - The Discord interaction associated with the media job.
+ * @param {Object} reply - The reply session used to report progress and deliver the result.
+ * @param {Object} request - The media request, including its URL, output type, and compression preference.
+ */
 async function runMediaJob(interaction, reply, request) {
     const controller = new AbortController();
+    const signal = AbortSignal.any([controller.signal, tempOwnershipSignal]);
     const timeout = setTimeout(() => controller.abort(), config.jobTimeoutMs);
     const uploadTargetBytes = uploadTargetBytesForInteraction(interaction);
     let tempDir;
@@ -80,7 +85,7 @@ async function runMediaJob(interaction, reply, request) {
             outputType: request.outputType,
             maxBytes: config.maxDownloadBytes,
             targetBytes: uploadTargetBytes,
-            signal: controller.signal,
+            signal,
             onStatus: (status) => reply.update(status),
         });
         const downloadMs = performance.now() - downloadStarted;
@@ -91,7 +96,7 @@ async function runMediaJob(interaction, reply, request) {
             tempDir,
             maxAttachmentBytes: uploadTargetBytes,
             allowCompression: request.fitToLimit,
-            signal: controller.signal,
+            signal,
             onStatus: (status) => reply.update(status),
         });
         const processMs = performance.now() - processStarted;
@@ -103,18 +108,27 @@ async function runMediaJob(interaction, reply, request) {
             { phase: "uploading", detail: `Uploading ${formatBytes(output.sizeBytes)} to Discord` },
             { force: true },
         );
-        await reply.commit(output, {
-            method: download.method,
-            downloadMs,
-            processMs,
-            uploadTargetBytes,
-            recovered: download.recovered,
-            metadata: download.metadata,
-        });
+        await reply.commit(
+            output,
+            {
+                method: download.method,
+                downloadMs,
+                processMs,
+                uploadTargetBytes,
+                recovered: download.recovered,
+                metadata: download.metadata,
+            },
+            { signal },
+        );
 
         log.info(`Completed media job for ${interaction.user.tag}: ${output.fileName} via ${download.method}`);
-    } catch (error) {
-        log.error(`Media job failed for ${interaction.user.tag}:`, error.stack || error.message);
+    } catch (caught) {
+        const error = tempOwnershipSignal.aborted && !isUserFacingError(caught) ? tempOwnershipSignal.reason : caught;
+        if (isUserFacingError(error)) {
+            log.warn(`Media job ended for ${interaction.user.tag} (${error.code}): ${error.message}`);
+        } else {
+            log.error(`Media job failed for ${interaction.user.tag}:`, error.stack || error.message);
+        }
         await reply.fail(error);
     } finally {
         clearTimeout(timeout);
@@ -140,6 +154,10 @@ async function enqueue(interaction, reply, request) {
     }
 }
 
+/**
+ * Handles a media command by validating its options, deferring the Discord reply, and queuing the requested job.
+ * @param {import("discord.js").ChatInputCommandInteraction} interaction - The Discord command interaction containing the media URL and output options.
+ */
 export async function handleMediaCommand(interaction) {
     requireGuildDeliveryPermissions(interaction);
     const privateReply = interaction.inGuild() && !config.publicRepliesInGuilds;
@@ -158,13 +176,10 @@ export async function handleMediaCommand(interaction) {
             fitToLimit: interaction.options.getBoolean("fit_to_limit") ?? true,
         });
     } catch (error) {
-        log.error(`Could not queue media job: ${error.stack || error.message}`);
+        if (isUserFacingError(error)) log.warn(`Could not queue media job (${error.code}): ${error.message}`);
+        else log.error(`Could not queue media job: ${error.stack || error.message}`);
         await reply.fail(error);
     }
 }
 
-export {
-    missingGuildDeliveryPermissions,
-    runMediaJob,
-    uploadTargetBytesForInteraction,
-};
+export { missingGuildDeliveryPermissions, runMediaJob, uploadTargetBytesForInteraction };

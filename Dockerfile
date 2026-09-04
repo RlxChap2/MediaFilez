@@ -2,7 +2,7 @@ FROM node:22-bookworm-slim
 
 WORKDIR /app
 
-ARG GALLERY_DL_VERSION=1.32.8
+ARG GALLERY_DL_VERSION=1.32.10
 ARG YT_DLP_VERSION=2026.8.19
 
 RUN apt-get update \
@@ -15,7 +15,7 @@ RUN apt-get update \
   && ln -s /opt/gallery-dl/bin/yt-dlp /usr/local/bin/yt-dlp \
   && rm -rf /var/lib/apt/lists/*
 
-RUN corepack enable && corepack prepare pnpm@11.9.0 --activate
+RUN corepack enable && corepack prepare pnpm@11.25.0 --activate
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY scripts ./scripts
