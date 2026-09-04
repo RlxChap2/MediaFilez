@@ -156,6 +156,54 @@ test("does not retry an upload after the whole job is cancelled", async (t) => {
     assert.equal(reply.state, "open");
 });
 
+test("cancels an upload retry wait when the whole job times out", async (t) => {
+    const output = await fixture(t);
+    const controller = new AbortController();
+    let uploadAttempts = 0;
+    let waitCancelled = false;
+    let markWaitStarted;
+    const waitStarted = new Promise((resolve) => {
+        markWaitStarted = resolve;
+    });
+    const interaction = {
+        fetchReply: async () => ({ attachments: new Map() }),
+    };
+    const reply = new ReplySession(interaction, {
+        uploadAttempts: 3,
+        upload: async () => {
+            uploadAttempts += 1;
+            throw Object.assign(new Error("rate limited"), { status: 429, retryAfterMs: 60_000 });
+        },
+        wait: async (_milliseconds, signal) => {
+            markWaitStarted();
+            return await new Promise((resolve) => {
+                const timer = setTimeout(() => resolve(true), 60_000);
+                signal.addEventListener(
+                    "abort",
+                    () => {
+                        clearTimeout(timer);
+                        waitCancelled = true;
+                        resolve(false);
+                    },
+                    { once: true },
+                );
+            });
+        },
+    });
+
+    const rejection = assert.rejects(
+        reply.commit(output, details, { signal: controller.signal }),
+        (error) => error.name === "UserFacingError" && error.code === "JOB_TIMEOUT",
+    );
+    await waitStarted;
+    controller.abort();
+    await rejection;
+
+    assert.equal(uploadAttempts, 1);
+    assert.equal(waitCancelled, true);
+    assert.equal(reply.state, "open");
+});
+
 test("preserves user-facing messages even across module or realm boundaries", () => {
     assert.equal(
         messageForError({ name: "UserFacingError", message: "The measured file does not fit." }),

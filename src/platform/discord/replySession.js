@@ -1,3 +1,4 @@
+import { setTimeout as sleep } from "node:timers/promises";
 import { config } from "../../config.js";
 import { DeliveryUnknownError, messageForError, userError } from "../../utils/errors.js";
 import { formatBytes, formatElapsed } from "../../utils/format.js";
@@ -112,8 +113,22 @@ function uploadFailure(error, attempts) {
     );
 }
 
-function wait(milliseconds) {
-    return new Promise((resolve) => setTimeout(resolve, milliseconds));
+function jobTimeoutFailure(cause) {
+    return userError(
+        "The job timed out before Discord accepted the upload. Try again with a smaller file.",
+        "JOB_TIMEOUT",
+        { cause },
+    );
+}
+
+async function wait(milliseconds, signal) {
+    try {
+        await sleep(milliseconds, undefined, signal ? { signal } : undefined);
+        return true;
+    } catch (error) {
+        if (signal?.aborted && error.name === "AbortError") return false;
+        throw error;
+    }
 }
 
 export class ReplySession {
@@ -128,6 +143,20 @@ export class ReplySession {
         this.upload = options.upload ?? uploadDiscordReply;
         this.wait = options.wait ?? wait;
         this.pendingUpdate = Promise.resolve();
+    }
+
+    /**
+     * Waits before another Discord request while preserving the whole-job deadline.
+     * @param {number} milliseconds - Requested backoff duration.
+     * @param {AbortSignal} [signal] - Whole-job cancellation signal.
+     * @param {Error} cause - Upload error that triggered the retry.
+     * @returns {Promise<void>}
+     */
+    async waitBeforeRetry(milliseconds, signal, cause) {
+        const completed = await this.wait(milliseconds, signal);
+        if (completed !== false && !signal?.aborted) return;
+        this.state = "open";
+        throw jobTimeoutFailure(cause);
     }
 
     update(status, options = {}) {
@@ -180,7 +209,11 @@ export class ReplySession {
                     } catch (error) {
                         verificationError = error;
                         if (verification < 3 && isRetryableUploadError(error)) {
-                            await this.wait(this.uploadRetryDelayMs * verification);
+                            await this.waitBeforeRetry(
+                                this.uploadRetryDelayMs * verification,
+                                options.signal,
+                                uploadError,
+                            );
                             continue;
                         }
                         break;
@@ -197,11 +230,7 @@ export class ReplySession {
 
                 if (options.signal?.aborted) {
                     this.state = "open";
-                    throw userError(
-                        "The job timed out before Discord accepted the upload. Try again with a smaller file.",
-                        "JOB_TIMEOUT",
-                        { cause: uploadError },
-                    );
+                    throw jobTimeoutFailure(uploadError);
                 }
 
                 if (!isRetryableUploadError(uploadError) || attempt === this.uploadAttempts) {
@@ -212,7 +241,11 @@ export class ReplySession {
                 log.warn(
                     `Discord did not accept upload attempt ${attempt}/${this.uploadAttempts} (${uploadErrorSummary(uploadError)}); retrying after verification.`,
                 );
-                await this.wait(Math.max(this.uploadRetryDelayMs * attempt, uploadError.retryAfterMs || 0));
+                await this.waitBeforeRetry(
+                    Math.max(this.uploadRetryDelayMs * attempt, uploadError.retryAfterMs || 0),
+                    options.signal,
+                    uploadError,
+                );
             }
         }
     }
