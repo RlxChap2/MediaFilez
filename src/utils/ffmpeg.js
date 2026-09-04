@@ -12,6 +12,8 @@ import { ProcessExecutionError, runProcess } from "./process.js";
 
 const execFileAsync = promisify(execFile);
 let ffmpegAvailability = null;
+const MAX_IMAGE_DIMENSION = 8192;
+const MAX_IMAGE_PIXELS = 4096 * 4096;
 
 export function resolveFFmpegPaths() {
     return {
@@ -193,6 +195,22 @@ export async function extractAudio(inputPath, outputDir, targetSizeBytes, option
  * @return {Promise<string>} The path to the compressed JPEG image.
  */
 export async function compressImage(inputPath, outputDir, targetSizeBytes, options = {}) {
+    const info = await getMediaInfo(inputPath, options);
+    const imagePixels = info.width * info.height;
+    if (
+        !Number.isSafeInteger(imagePixels) ||
+        info.width <= 0 ||
+        info.height <= 0 ||
+        info.width > MAX_IMAGE_DIMENSION ||
+        info.height > MAX_IMAGE_DIMENSION ||
+        imagePixels > MAX_IMAGE_PIXELS
+    ) {
+        throw userError(
+            `The image dimensions (${info.width}x${info.height}) are too large to process safely. The limit is ${MAX_IMAGE_DIMENSION}px per side and ${MAX_IMAGE_PIXELS.toLocaleString("en-US")} total pixels.`,
+            "IMAGE_DIMENSIONS_TOO_LARGE",
+        );
+    }
+
     const baseName = path.basename(inputPath, path.extname(inputPath));
     let outputPath = path.join(outputDir, `fit-${baseName}.jpg`);
     if (path.resolve(outputPath) === path.resolve(inputPath)) {
@@ -220,7 +238,7 @@ export async function compressImage(inputPath, outputDir, targetSizeBytes, optio
                 "-frames:v",
                 "1",
                 "-vf",
-                `scale=min(iw\\,${attempt.maxWidth}):-2`,
+                `scale=w=min(iw\\,${attempt.maxWidth}):h=min(ih\\,${attempt.maxWidth}):force_original_aspect_ratio=decrease:force_divisible_by=2`,
                 "-q:v",
                 String(attempt.quality),
                 "-map_metadata",

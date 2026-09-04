@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { prepareMediaForDiscord } from "../../src/media/processor.js";
-import { checkFFmpeg, runFFmpeg } from "../../src/utils/ffmpeg.js";
+import { checkFFmpeg, compressImage, getMediaInfo, runFFmpeg } from "../../src/utils/ffmpeg.js";
 
 test("auto fits low-bitrate video and reports transcoding progress", async (t) => {
     if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
@@ -124,4 +124,31 @@ test("auto fits oversized images instead of rejecting the original", async (t) =
     assert.ok(output.sizeBytes <= targetSize);
     assert.equal(output.extension, "jpg");
     assert.match(output.note, /fit Discord/);
+});
+
+test("image fitting rejects unsafe decoded dimensions", async (t) => {
+    if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-image-dimensions-"));
+    t.after(() => fs.rm(dir, { recursive: true, force: true }));
+    const input = path.join(dir, "extreme.png");
+    await runFFmpeg(["-f", "lavfi", "-i", "color=c=white:s=2x20000:d=0.04", "-frames:v", "1", "-y", input]);
+
+    await assert.rejects(
+        compressImage(input, dir, 10 * 1024 * 1024),
+        (error) => error.name === "UserFacingError" && error.code === "IMAGE_DIMENSIONS_TOO_LARGE",
+    );
+});
+
+test("image fitting caps both output dimensions", async (t) => {
+    if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-image-aspect-"));
+    t.after(() => fs.rm(dir, { recursive: true, force: true }));
+    const input = path.join(dir, "tall.png");
+    await runFFmpeg(["-f", "lavfi", "-i", "color=c=white:s=8x8000:d=0.04", "-frames:v", "1", "-y", input]);
+
+    const output = await compressImage(input, dir, 10 * 1024 * 1024);
+    const info = await getMediaInfo(output);
+
+    assert.ok(info.width <= 4096);
+    assert.ok(info.height <= 4096);
 });
