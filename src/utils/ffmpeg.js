@@ -147,6 +147,15 @@ function audioBitrateForTarget(duration, targetSizeBytes) {
     return Math.min(192, Math.max(48, kbps));
 }
 
+/**
+ * Extracts the audio stream as MP3 using a bitrate derived from the target size.
+ * @param {string} inputPath - Path to the source media file.
+ * @param {string} outputDir - Directory for the converted audio file.
+ * @param {number} targetSizeBytes - Maximum desired output size in bytes.
+ * @param {Object} [options={}] - Conversion options, including an optional output file name.
+ * @param {string} [options.outputFileName] - Name of the output audio file.
+ * @return {Promise<string>} The path to the converted MP3 file.
+ */
 export async function extractAudio(inputPath, outputDir, targetSizeBytes, options = {}) {
     const info = await getMediaInfo(inputPath, options);
     if (!info.hasAudio) {
@@ -175,6 +184,14 @@ export async function extractAudio(inputPath, outputDir, targetSizeBytes, option
     return outputPath;
 }
 
+/**
+ * Compresses an image to JPEG until it meets the target file size.
+ * @param {string} inputPath - The path to the source image.
+ * @param {string} outputDir - The directory for the compressed image.
+ * @param {number} targetSizeBytes - The maximum permitted output size in bytes.
+ * @param {Object} [options] - Optional processing and progress-reporting options.
+ * @return {Promise<string>} The path to the compressed JPEG image.
+ */
 export async function compressImage(inputPath, outputDir, targetSizeBytes, options = {}) {
     const baseName = path.basename(inputPath, path.extname(inputPath));
     let outputPath = path.join(outputDir, `fit-${baseName}.jpg`);
@@ -228,6 +245,14 @@ export async function compressImage(inputPath, outputDir, targetSizeBytes, optio
     );
 }
 
+/**
+ * Calculates audio and video bitrates for fitting a video within a target size.
+ * @param {Object} info - Video metadata, including duration and audio presence.
+ * @param {number} targetSizeBytes - Maximum output size in bytes.
+ * @param {number} [scale=0.9] - Fraction of the target size available for media data.
+ * @returns {{videoKbps: number, audioKbps: number}} The calculated video and audio bitrates in kilobits per second.
+ * @throws {Error} If the video bitrate would be too low for a playable video.
+ */
 function videoBitratesForTarget(info, targetSizeBytes, scale = 0.9) {
     const availableBitrate = Math.floor((targetSizeBytes * 8 * scale) / info.duration);
     let audioBitrate = 0;

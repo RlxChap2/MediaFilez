@@ -30,6 +30,11 @@ async function listFiles(directory) {
     return files;
 }
 
+/**
+ * Finds non-empty artifact files and orders them by descending size.
+ * @param {string} attemptDir - The directory containing files to inspect.
+ * @return {Promise<Array<{filePath: string, sizeBytes: number}>>} The artifact candidates sorted from largest to smallest.
+ */
 export async function findArtifactCandidates(attemptDir) {
     const candidates = [];
     for (const filePath of await listFiles(attemptDir)) {
@@ -39,6 +44,17 @@ export async function findArtifactCandidates(attemptDir) {
     return candidates.sort((left, right) => right.sizeBytes - left.sizeBytes);
 }
 
+/**
+ * Validate a downloaded artifact and determine its media characteristics.
+ * @param {string|Object} candidate - The artifact path or a file descriptor containing `filePath`.
+ * @param {Object} [options] - Validation and media-detection options.
+ * @param {string} [options.outputType] - Required output type, such as `audio`, `video`, `image`, or `thumbnail`.
+ * @param {number} [options.maxBytes] - Maximum permitted file size in bytes.
+ * @param {string} [options.preferredName] - Name to use when describing the artifact.
+ * @param {AbortSignal} [options.signal] - Signal for cancelling media inspection.
+ * @returns {Promise<Object>} File metadata enriched with the resolved media kind, audio-only status, and media information.
+ * @throws {Error} If the artifact is empty, too large, unrecognized, lacks playable media, or does not satisfy the requested output type.
+ */
 export async function validateArtifact(candidate, options = {}) {
     const filePath = typeof candidate === "string" ? candidate : candidate.filePath;
     const file = await describeFile(
@@ -78,6 +94,12 @@ export async function validateArtifact(candidate, options = {}) {
     };
 }
 
+/**
+ * Finds and validates the first suitable artifact in an attempt directory.
+ * @param {string} attemptDir - The directory containing candidate artifacts.
+ * @param {Object} [options] - Validation options.
+ * @returns {Promise<Object|null>} The validated artifact, or `null` if no candidate is suitable.
+ */
 export async function recoverArtifact(attemptDir, options = {}) {
     for (const candidate of await findArtifactCandidates(attemptDir)) {
         try {
@@ -89,6 +111,12 @@ export async function recoverArtifact(attemptDir, options = {}) {
     return null;
 }
 
+/**
+ * Commits an artifact to the job's completed directory.
+ * @param {Object} artifact - The artifact metadata and source file path.
+ * @param {string} jobDir - The job directory containing the completed directory.
+ * @return {Promise<Object>} The artifact metadata updated with its committed path, filename, and status.
+ */
 export async function commitArtifact(artifact, jobDir) {
     const completedDir = path.join(jobDir, "completed");
     await fs.mkdir(completedDir, { recursive: true });

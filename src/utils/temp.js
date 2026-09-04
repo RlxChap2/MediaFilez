@@ -23,6 +23,10 @@ function validateTempPrefix(prefix) {
     return prefix;
 }
 
+/**
+ * Checks whether the system temporary directory has sufficient free space.
+ * @throws {UserFacingError} If available temporary-directory space is below the configured minimum.
+ */
 async function ensureTempDiskSpace() {
     if (!fs.statfs) return;
 
@@ -41,6 +45,13 @@ async function ensureTempDiskSpace() {
     }
 }
 
+/**
+ * Creates an owned request directory that startup cleanup can distinguish from abandoned work.
+ * @param {Object} [options] - Optional root and prefix overrides.
+ * @param {string} [options.rootDir] - Root directory in which to create the request directory.
+ * @param {string} [options.prefix] - Prefix used to identify MediaFilez request directories.
+ * @returns {Promise<string>} The created directory path.
+ */
 export async function createRequestTempDir(options = {}) {
     if (tempOwnershipSignal.aborted) throw tempOwnershipSignal.reason;
     await ensureTempDiskSpace();
@@ -119,6 +130,14 @@ async function isTempOwnerActive(owner) {
     });
 }
 
+/**
+ * Removes request directories only after their same-host process owner is proven inactive.
+ * @param {Object} [options] - Cleanup options.
+ * @param {string} [options.rootDir] - Root directory to scan.
+ * @param {string} [options.prefix] - Prefix used to identify stale directories.
+ * @param {Function} [options.isOwnerActive] - Ownership probe override used by tests.
+ * @returns {Promise<number>} The number of directories removed.
+ */
 export async function cleanupStaleTempDirs(options = {}) {
     const rootDir = path.resolve(options.rootDir ?? os.tmpdir());
     const prefix = validateTempPrefix(options.prefix ?? config.tempPrefix);
