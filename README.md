@@ -124,7 +124,7 @@ MediaFilez tries configured endpoints in order, falls through failures, and cool
 
 ## Cookies and restricted posts
 
-Some public posts still require an authenticated browser session. Export a fresh Netscape-format cookie file and set:
+Some public posts still require an authenticated browser session. The hosted bot may use a dedicated operator-controlled source-platform account for this purpose. Users never sign in through MediaFilez and must not provide their own passwords or cookies. Export a fresh Netscape-format cookie file for the dedicated account and set:
 
 ```env
 MEDIA_COOKIES_FILE=C:\path\to\cookies.txt
@@ -143,7 +143,7 @@ services:
 
 `YTDLP_COOKIES_FROM_BROWSER` is useful for local diagnosis. A cookie file works better on servers because browsers may lock their databases and Windows DPAPI ties decryption to a user session.
 
-MediaFilez does not bypass private-account permissions, paywalls, DRM, or removed content. Download only media you have permission to access and save.
+The source platform may associate requests made with these cookies with the dedicated account. MediaFilez does not bypass private-account permissions, paywalls, DRM, or removed content. Download only media you have permission to access and save.
 
 ## Main configuration
 
@@ -201,3 +201,11 @@ Keep new engines beside existing engines. Do not move validation, fallback owner
 ## License
 
 MediaFilez is licensed under AGPL-3.0-only. See [LICENSE](LICENSE).
+
+## Policies
+
+- [Terms of Service](TERMS_OF_SERVICE.md) for the official hosted bot
+- [Privacy Policy](PRIVACY_POLICY.md), including data use, recipients, retention, and deletion requests
+- [Security Policy](SECURITY.md) for private vulnerability reporting
+
+Self-hosters are independent operators and must publish policies that match their actual deployment.
