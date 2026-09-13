@@ -92,9 +92,38 @@ export async function downloadMedia(rawUrl, jobDir, options = {}) {
     const engineRegistry = options.engines ?? DEFAULT_ENGINES;
     const plan = options.plan ?? planEngines(rawUrl, outputType);
     const attempts = [];
+    let silentFallback = null;
+
+    async function commitResult(artifact, method, metadata, recovered) {
+        return {
+            ...(await commitArtifact(artifact, jobDir)),
+            method,
+            metadata,
+            attempts,
+            recovered,
+        };
+    }
+
+    async function selectResult(artifact, method, metadata, recovered, index) {
+        if (silentFallback) {
+            if (artifact.mediaKind !== "video" || !artifact.mediaInfo?.hasAudio) return null;
+        } else if (
+            ["auto", "video"].includes(outputType) &&
+            artifact.mediaKind === "video" &&
+            artifact.mediaInfo?.hasAudio === false &&
+            plan.indexOf("yt-dlp", index + 1) !== -1 &&
+            engineRegistry.has("yt-dlp")
+        ) {
+            silentFallback = { artifact, method, metadata, recovered };
+            log.info(`Trying yt-dlp for an audio-bearing version of the ${method} video.`);
+            return null;
+        }
+        return await commitResult(artifact, method, metadata, recovered);
+    }
 
     for (const [index, engineName] of plan.entries()) {
         if (options.signal?.aborted) throw abortError();
+        if (silentFallback && engineName !== "yt-dlp") continue;
         const engine = engineRegistry.get(engineName);
         if (!engine) continue;
         const attemptDir = path.join(jobDir, `attempt-${String(index + 1).padStart(2, "0")}-${engineName}`);
@@ -120,30 +149,36 @@ export async function downloadMedia(rawUrl, jobDir, options = {}) {
                 preferredName: candidate.fileName,
                 signal: options.signal,
             });
-            const committed = await commitArtifact({ ...candidate, ...validated }, jobDir);
-            return {
-                ...committed,
-                method: candidate.method || engineName,
-                metadata: candidate.metadata ?? null,
-                attempts,
-                recovered: Boolean(candidate.recoveredFromProcessError),
-            };
+            const result = await selectResult(
+                { ...candidate, ...validated },
+                candidate.method || engineName,
+                candidate.metadata ?? null,
+                Boolean(candidate.recoveredFromProcessError),
+                index,
+            );
+            if (result) return result;
         } catch (error) {
-            if (error instanceof UserFacingError && error.stopFallback) throw error;
             if (options.signal?.aborted) throw abortError();
+            if (error instanceof UserFacingError && error.stopFallback) {
+                if (!silentFallback) throw error;
+                attempts.push({
+                    engine: engineName,
+                    error: compactEngineError(error.message),
+                    elapsedMs: performance.now() - startedAt,
+                });
+                continue;
+            }
 
             const recovered = await recoverArtifact(attemptDir, { outputType, maxBytes, signal: options.signal });
             if (recovered) {
-                log.warn(
-                    `${engineName} failed after producing a valid artifact; committing the artifact and stopping fallback.`,
-                );
-                return {
-                    ...(await commitArtifact(recovered, jobDir)),
-                    method: engineName,
-                    metadata: null,
-                    attempts,
-                    recovered: true,
-                };
+                const result = await selectResult(recovered, engineName, null, true, index);
+                if (result) {
+                    log.warn(
+                        `${engineName} failed after producing a valid artifact; committing the artifact and stopping fallback.`,
+                    );
+                    return result;
+                }
+                continue;
             }
 
             const detail = compactEngineError(
@@ -153,6 +188,17 @@ export async function downloadMedia(rawUrl, jobDir, options = {}) {
             log.warn(`${engineName} failed: ${detail}`);
             await fs.rm(attemptDir, { recursive: true, force: true });
         }
+    }
+
+    if (options.signal?.aborted) throw abortError();
+    if (silentFallback) {
+        log.info("No audio-bearing alternative was found; keeping the original silent video.");
+        return await commitResult(
+            silentFallback.artifact,
+            silentFallback.method,
+            silentFallback.metadata,
+            silentFallback.recovered,
+        );
     }
 
     const error = userError(publicFailure(attempts, outputType), "DOWNLOAD_FAILED");

@@ -53,10 +53,14 @@ export async function describeFile(filePath, preferredName, fallbackName = "medi
         .toLowerCase();
     const extension = detected?.ext || urlExtension || extensionFromMime(fallbackMime) || null;
     const mime = detected?.mime || fallbackMime || null;
+    const correctedName =
+        detected?.ext && urlExtension && detected.ext !== urlExtension
+            ? `${path.basename(preferredName, path.extname(preferredName))}.${detected.ext}`
+            : preferredName;
 
     return {
         filePath,
-        fileName: makeSafeFileName(preferredName, fallbackName, extension),
+        fileName: makeSafeFileName(correctedName, fallbackName, extension),
         sizeBytes: stat.size,
         mime,
         extension,

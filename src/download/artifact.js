@@ -81,6 +81,12 @@ export async function validateArtifact(candidate, options = {}) {
     }
 
     const mediaKind = mediaInfo?.hasVideo ? "video" : mediaInfo?.hasAudio ? "audio" : file.mediaKind;
+    if (options.outputType === "video" && mediaKind !== "video") {
+        throw new Error(`The artifact contains ${mediaKind} media, not video.`);
+    }
+    if (options.outputType === "audio" && !mediaInfo?.hasAudio) {
+        throw new Error(`The artifact contains ${mediaKind} media, not audio.`);
+    }
     if (["image", "thumbnail"].includes(options.outputType) && !["image", "video"].includes(mediaKind)) {
         throw new Error("The artifact cannot produce an image.");
     }

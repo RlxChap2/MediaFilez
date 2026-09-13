@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { downloadMedia } from "../../src/download/orchestrator.js";
 import { DownloadMethodError } from "../../src/utils/errors.js";
+import { checkFFmpeg, runFFmpeg } from "../../src/utils/ffmpeg.js";
 
 const PNG = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -14,6 +15,167 @@ const PNG = Buffer.from(
 async function tempJob() {
     return await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-test-"));
 }
+
+async function videoFixture(directory, name, withAudio) {
+    const filePath = path.join(directory, name);
+    const args = ["-f", "lavfi", "-i", "color=c=blue:s=64x64:r=10:d=0.5"];
+    if (withAudio) args.push("-f", "lavfi", "-i", "sine=frequency=440:duration=0.5");
+    args.push("-c:v", "libx264", "-pix_fmt", "yuv420p");
+    if (withAudio) args.push("-c:a", "aac");
+    args.push("-y", filePath);
+    await runFFmpeg(args);
+    return filePath;
+}
+
+function fileEngine(source, method, calls) {
+    return async (_url, attemptDir) => {
+        calls.push(method);
+        const filePath = path.join(attemptDir, path.basename(source));
+        await fs.copyFile(source, filePath);
+        return { filePath, fileName: path.basename(filePath), method };
+    };
+}
+
+for (const outputType of ["video", "auto"]) {
+    test(`${outputType} prefers an audible video over a silent first result`, async (t) => {
+        if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+        const jobDir = await tempJob();
+        t.after(() => fs.rm(jobDir, { recursive: true, force: true }));
+        const silent = await videoFixture(jobDir, "silent.mp4", false);
+        const audible = await videoFixture(jobDir, "audible.mp4", true);
+        const calls = [];
+
+        const result = await downloadMedia("https://example.com/post", jobDir, {
+            outputType,
+            plan: ["gallery-dl", "yt-dlp"],
+            engines: new Map([
+                ["gallery-dl", fileEngine(silent, "gallery-dl", calls)],
+                ["yt-dlp", fileEngine(audible, "yt-dlp", calls)],
+            ]),
+        });
+
+        assert.deepEqual(calls, ["gallery-dl", "yt-dlp"]);
+        assert.equal(result.mediaKind, "video");
+        assert.equal(result.mediaInfo.hasAudio, true);
+        assert.equal(result.method, "yt-dlp");
+    });
+}
+
+test("keeps an audio-bearing first video without probing another engine", async (t) => {
+    if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+    const jobDir = await tempJob();
+    t.after(() => fs.rm(jobDir, { recursive: true, force: true }));
+    const audible = await videoFixture(jobDir, "audible.mp4", true);
+    const calls = [];
+
+    const result = await downloadMedia("https://example.com/post", jobDir, {
+        outputType: "video",
+        plan: ["gallery-dl", "yt-dlp"],
+        engines: new Map([
+            ["gallery-dl", fileEngine(audible, "gallery-dl", calls)],
+            [
+                "yt-dlp",
+                async () => {
+                    throw new Error("must not run");
+                },
+            ],
+        ]),
+    });
+
+    assert.deepEqual(calls, ["gallery-dl"]);
+    assert.equal(result.mediaInfo.hasAudio, true);
+    assert.equal(result.method, "gallery-dl");
+});
+
+test("keeps the first silent video when the audio probe fails", async (t) => {
+    if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+    const jobDir = await tempJob();
+    t.after(() => fs.rm(jobDir, { recursive: true, force: true }));
+    const silent = await videoFixture(jobDir, "silent.mp4", false);
+    const calls = [];
+
+    const result = await downloadMedia("https://example.com/post", jobDir, {
+        outputType: "video",
+        plan: ["gallery-dl", "yt-dlp"],
+        engines: new Map([
+            ["gallery-dl", fileEngine(silent, "gallery-dl", calls)],
+            [
+                "yt-dlp",
+                async () => {
+                    calls.push("yt-dlp");
+                    throw new DownloadMethodError("yt-dlp", "Unavailable");
+                },
+            ],
+        ]),
+    });
+
+    assert.deepEqual(calls, ["gallery-dl", "yt-dlp"]);
+    assert.equal(result.method, "gallery-dl");
+    assert.equal(result.mediaInfo.hasAudio, false);
+});
+
+test("auto keeps a video when the audio probe returns an image", async (t) => {
+    if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+    const jobDir = await tempJob();
+    t.after(() => fs.rm(jobDir, { recursive: true, force: true }));
+    const silent = await videoFixture(jobDir, "silent.mp4", false);
+    const image = path.join(jobDir, "image.png");
+    await fs.writeFile(image, PNG);
+    const calls = [];
+
+    const result = await downloadMedia("https://example.com/post", jobDir, {
+        outputType: "auto",
+        plan: ["gallery-dl", "yt-dlp"],
+        engines: new Map([
+            ["gallery-dl", fileEngine(silent, "gallery-dl", calls)],
+            ["yt-dlp", fileEngine(image, "yt-dlp", calls)],
+        ]),
+    });
+
+    assert.deepEqual(calls, ["gallery-dl", "yt-dlp"]);
+    assert.equal(result.mediaKind, "video");
+    assert.equal(result.method, "gallery-dl");
+});
+
+test("video output rejects a mislabeled image and tries the next engine", async (t) => {
+    if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+    const jobDir = await tempJob();
+    t.after(() => fs.rm(jobDir, { recursive: true, force: true }));
+    const image = path.join(jobDir, "misleading.mp4");
+    await fs.writeFile(image, PNG);
+    const video = await videoFixture(jobDir, "video.mp4", true);
+    const calls = [];
+
+    const result = await downloadMedia("https://example.com/post", jobDir, {
+        outputType: "video",
+        plan: ["gallery-dl", "yt-dlp"],
+        engines: new Map([
+            ["gallery-dl", fileEngine(image, "gallery-dl", calls)],
+            ["yt-dlp", fileEngine(video, "yt-dlp", calls)],
+        ]),
+    });
+
+    assert.deepEqual(calls, ["gallery-dl", "yt-dlp"]);
+    assert.equal(result.mediaKind, "video");
+    assert.equal(result.method, "yt-dlp");
+});
+
+test("auto names a detected image with its actual extension", async (t) => {
+    const jobDir = await tempJob();
+    t.after(() => fs.rm(jobDir, { recursive: true, force: true }));
+    const image = path.join(jobDir, "misleading.mp4");
+    await fs.writeFile(image, PNG);
+
+    const result = await downloadMedia("https://example.com/post", jobDir, {
+        outputType: "auto",
+        plan: ["gallery-dl"],
+        engines: new Map([["gallery-dl", fileEngine(image, "gallery-dl", [])]]),
+    });
+
+    assert.equal(result.mediaKind, "image");
+    assert.equal(result.extension, "png");
+    assert.equal(result.fileName, "misleading.png");
+});
 
 test("stops after the first valid engine result", async (t) => {
     const jobDir = await tempJob();
@@ -61,11 +223,17 @@ test("auto accepts the first recognized media kind", async (t) => {
                 return { filePath, fileName: "detected.png", method: "detector" };
             },
         ],
+        [
+            "yt-dlp",
+            async () => {
+                throw new Error("must not run");
+            },
+        ],
     ]);
 
     const result = await downloadMedia("https://example.com/post", jobDir, {
         outputType: "auto",
-        plan: ["detector"],
+        plan: ["detector", "yt-dlp"],
         engines,
     });
 
