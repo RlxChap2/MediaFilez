@@ -38,10 +38,10 @@ function statusCopy(status) {
 
 function deliveredCopy(output, details) {
     const lines = [
-        `**Ready: ${escapeMarkdown(output.fileName)}** · ${formatBytes(output.sizeBytes)}`,
-        `Engine: ${escapeMarkdown(String(details.method))}`,
-        `Download: ${formatElapsed(details.downloadMs)} · Processing: ${formatElapsed(details.processMs)}`,
-        `Upload target: ${formatBytes(details.uploadTargetBytes)}`,
+        `**Ready: ${escapeMarkdown(output.fileName)}**`,
+        `-# Engine: ${escapeMarkdown(String(details.method))}`,
+        `-# Download: ${formatElapsed(details.downloadMs)} · Processing: ${formatElapsed(details.processMs)}`,
+        `-# Upload target: ${formatBytes(details.uploadTargetBytes)} · ${formatBytes(output.sizeBytes)}`,
     ];
 
     const title = details.metadata?.title?.replace(/\s+/g, " ").trim();
@@ -50,7 +50,7 @@ function deliveredCopy(output, details) {
 
     if (title && title !== output.fileName && !containsLink(title)) {
         const credit = creator && !containsLink(creator) ? ` (${escapeMarkdown(creator.slice(0, 60))})` : "";
-        lines.splice(1, 0, `Title: ${escapeMarkdown(title.slice(0, 100))}${credit}`);
+        lines.splice(1, 0, `-# Title: ${escapeMarkdown(title.slice(0, 100))}${credit}`);
     }
 
     if (output.note) lines.push(`Note: ${escapeMarkdown(String(output.note))}`);
