@@ -1,4 +1,5 @@
 import { setTimeout as sleep } from "node:timers/promises";
+import { escapeMarkdown } from "discord.js";
 import { config } from "../../config.js";
 import { DeliveryUnknownError, messageForError, userError } from "../../utils/errors.js";
 import { formatBytes, formatElapsed } from "../../utils/format.js";
@@ -37,17 +38,23 @@ function statusCopy(status) {
 
 function deliveredCopy(output, details) {
     const lines = [
-        `Ready: **${output.fileName}** (${formatBytes(output.sizeBytes)})`,
-        `-# engine: ${details.method} | download: ${formatElapsed(details.downloadMs)} | process: ${formatElapsed(details.processMs)}`,
-        `-# Upload target here: ${formatBytes(details.uploadTargetBytes)}`,
+        `**Ready: ${escapeMarkdown(output.fileName)}** · ${formatBytes(output.sizeBytes)}`,
+        `Engine: ${escapeMarkdown(String(details.method))}`,
+        `Download: ${formatElapsed(details.downloadMs)} · Processing: ${formatElapsed(details.processMs)}`,
+        `Upload target: ${formatBytes(details.uploadTargetBytes)}`,
     ];
-    const title = details.metadata?.title?.trim();
-    const creator = details.metadata?.creator?.trim();
-    if (title && title !== output.fileName) {
-        lines.splice(1, 0, `-# ${title.slice(0, 160)}${creator ? ` | ${creator.slice(0, 80)}` : ""}`);
+
+    const title = details.metadata?.title?.replace(/\s+/g, " ").trim();
+    const creator = details.metadata?.creator?.replace(/\s+/g, " ").trim();
+    const containsLink = (value) => /https?:\/\/|www\./i.test(value);
+
+    if (title && title !== output.fileName && !containsLink(title)) {
+        const credit = creator && !containsLink(creator) ? ` (${escapeMarkdown(creator.slice(0, 60))})` : "";
+        lines.splice(1, 0, `Title: ${escapeMarkdown(title.slice(0, 100))}${credit}`);
     }
-    if (output.note) lines.push(`-# ${output.note}`);
-    if (details.recovered) lines.push("-# Recovered a complete file after the downloader exited with an error.");
+
+    if (output.note) lines.push(`Note: ${escapeMarkdown(String(output.note))}`);
+    if (details.recovered) lines.push("Note: The downloader exited with an error, but the file was complete.");
     return lines.join("\n");
 }
 
