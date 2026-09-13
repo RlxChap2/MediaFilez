@@ -58,11 +58,11 @@ test("shows the engine and timings as readable delivery details", async (t) => {
     assert.equal(
         edits[0].content,
         [
-            "**Ready: clip\\_test.mp4** · 5 B",
-            "Title: A clean video title (The creator)",
-            "Engine: yt-dlp",
-            "Download: 21.60s · Processing: 1m 5.0s",
-            "Upload target: 20.0 MB",
+            "**Ready: clip\\_test.mp4**",
+            "-# Title: A clean video title (The creator)",
+            "-# Engine: yt-dlp",
+            "-# Download: 21.60s · Processing: 1m 5.0s",
+            "-# Upload target: 20.0 MB · 5 B",
         ].join("\n"),
     );
 });
