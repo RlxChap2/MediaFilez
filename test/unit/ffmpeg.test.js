@@ -53,6 +53,7 @@ test("auto fits low-bitrate video and reports transcoding progress", async (t) =
     );
 
     assert.ok(output.sizeBytes <= targetSize);
+    assert.equal((await getMediaInfo(output.filePath)).hasAudio, true);
     assert.ok(
         statuses.some((status) => status.phase === "processing" && Number.isFinite(status.progress?.percent)),
         "expected at least one processing progress update",

@@ -38,6 +38,55 @@ test("commits once and never overwrites success with a later error", async (t) =
     assert.equal(edits[0].files.length, 1);
 });
 
+test("shows the engine and timings as readable delivery details", async (t) => {
+    const output = { ...(await fixture(t)), fileName: "clip_test.mp4" };
+    const edits = [];
+    const interaction = {
+        editReply: async (payload) => edits.push(payload),
+        fetchReply: async () => ({ attachments: new Map() }),
+    };
+    const reply = new ReplySession(interaction, { upload: uploadThroughInteraction });
+
+    await reply.commit(output, {
+        method: "yt-dlp",
+        downloadMs: 21_600,
+        processMs: 65_000,
+        uploadTargetBytes: 20 * 1024 * 1024,
+        metadata: { title: "A clean video title", creator: "The creator" },
+    });
+
+    assert.equal(
+        edits[0].content,
+        [
+            "**Ready: clip\\_test.mp4**",
+            "-# Title: A clean video title (The creator)",
+            "-# Engine: yt-dlp",
+            "-# Download: 21.60s · Processing: 1m 5.0s",
+            "-# Upload target: 20.0 MB · 5 B",
+        ].join("\n"),
+    );
+});
+
+test("omits page titles containing links without hiding delivery diagnostics", async (t) => {
+    const output = await fixture(t);
+    let sent;
+    const reply = new ReplySession(
+        { editReply: async (payload) => (sent = payload) },
+        { upload: uploadThroughInteraction },
+    );
+
+    await reply.commit(output, {
+        ...details,
+        metadata: { title: "AmazonPrime https://amzn.to/example", creator: "Ad" },
+        recovered: true,
+    });
+
+    assert.doesNotMatch(sent.content, /amzn\.to|AmazonPrime|Title:/);
+    assert.match(sent.content, /Engine: test/);
+    assert.match(sent.content, /Download: 10\.0ms/);
+    assert.match(sent.content, /file was complete/);
+});
+
 test("does not try to change reply visibility after the initial response", async () => {
     const edits = [];
     const interaction = {
