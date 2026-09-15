@@ -3,6 +3,7 @@ import { config } from "../config.js";
 
 const YOUTUBE_HOSTS = new Set(["youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"]);
 const INSTAGRAM_HOSTS = new Set(["instagram.com", "www.instagram.com", "m.instagram.com"]);
+const TIKTOK_HOSTS = new Set(["tiktok.com", "www.tiktok.com", "m.tiktok.com", "vm.tiktok.com", "vt.tiktok.com"]);
 const REDDIT_HOSTS = new Set([
     "reddit.com",
     "www.reddit.com",
@@ -24,8 +25,7 @@ const GALLERY_HOSTS = new Set([
 const COBALT_HOSTS = new Set([
     ...YOUTUBE_HOSTS,
     ...INSTAGRAM_HOSTS,
-    "tiktok.com",
-    "www.tiktok.com",
+    ...TIKTOK_HOSTS,
     "x.com",
     "www.x.com",
     "twitter.com",
@@ -83,17 +83,24 @@ const DIRECT_EXTENSIONS = new Set([
     ".avif",
 ]);
 
+function matchesHost(host, supportedHosts) {
+    for (const supportedHost of supportedHosts) {
+        if (host === supportedHost || host.endsWith(`.${supportedHost}`)) return true;
+    }
+    return false;
+}
+
 export function classifySource(rawUrl) {
     const url = new URL(rawUrl);
     const host = url.hostname.toLowerCase();
     const extension = path.extname(url.pathname).toLowerCase();
     return {
         direct: DIRECT_EXTENSIONS.has(extension),
-        youtube: YOUTUBE_HOSTS.has(host),
-        instagram: INSTAGRAM_HOSTS.has(host),
-        reddit: REDDIT_HOSTS.has(host),
-        gallery: GALLERY_HOSTS.has(host),
-        cobalt: COBALT_HOSTS.has(host),
+        youtube: matchesHost(host, YOUTUBE_HOSTS),
+        instagram: matchesHost(host, INSTAGRAM_HOSTS),
+        reddit: matchesHost(host, REDDIT_HOSTS),
+        gallery: matchesHost(host, GALLERY_HOSTS),
+        cobalt: matchesHost(host, COBALT_HOSTS),
         host,
     };
 }

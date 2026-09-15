@@ -67,6 +67,36 @@ test("routes official Cobalt services through Cobalt before generic extractors",
     }
 });
 
+test("routes TikTok short links through media extractors", () => {
+    const urls = [
+        "https://vt.tiktok.com/ZSqVMCEkT",
+        "https://vt.tiktok.com/ZSqVh1mdo/",
+        "https://vt.tiktok.com/ZSqVhe8cD/",
+        "https://vm.tiktok.com/example/",
+    ];
+
+    for (const url of urls) {
+        assert.deepEqual(planEngines(url, "video", settings), ["cobalt", "yt-dlp", "gallery-dl", "page-metadata"]);
+    }
+});
+
+test("routes official platform subdomains through media extractors", () => {
+    const cases = [
+        ["https://in.pinterest.com/pin/591590101088175088/", ["gallery-dl", "yt-dlp", "cobalt", "page-metadata"]],
+        ["https://m.bilibili.com/video/BV1xx411c7mD", ["cobalt", "yt-dlp", "gallery-dl", "page-metadata"]],
+        ["https://player.vimeo.com/video/76979871", ["cobalt", "yt-dlp", "gallery-dl", "page-metadata"]],
+        ["https://m.facebook.com/watch/?v=10153231379946729", ["cobalt", "yt-dlp", "gallery-dl", "page-metadata"]],
+        [
+            "https://v.redd.it/example",
+            ["cobalt", "yt-dlp", "reddit-embed", "reddit-proxy", "gallery-dl", "page-metadata"],
+        ],
+    ];
+
+    for (const [url, expected] of cases) {
+        assert.deepEqual(planEngines(url, "video", settings), expected);
+    }
+});
+
 test("uses Reddit embed fallback for short image links", () => {
     assert.deepEqual(planEngines("https://www.reddit.com/r/discordapp/s/example", "image", settings), [
         "reddit-embed",
@@ -99,6 +129,10 @@ test("lets auto detection use media-aware social extractors first", () => {
 
 test("keeps unrecognized hosts inside guarded HTTP engines", () => {
     assert.deepEqual(planEngines("https://example.com/post", "auto", settings), ["page-metadata", "direct-http"]);
+    assert.deepEqual(planEngines("https://tiktok.com.evil.example/post", "auto", settings), [
+        "page-metadata",
+        "direct-http",
+    ]);
     assert.deepEqual(planEngines("https://cdn.example.com/video.mp4", "video", settings), ["direct-http"]);
 });
 
