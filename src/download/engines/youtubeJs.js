@@ -1,5 +1,8 @@
+import { createWriteStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { Readable, Transform } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import { Innertube } from "youtubei.js";
 import { config } from "../../config.js";
 import { DownloadMethodError, userError } from "../../utils/errors.js";
@@ -10,8 +13,15 @@ import { preferredVideoHeight } from "../videoQuality.js";
 
 let clientPromise;
 
-function getClient() {
-    clientPromise ??= Innertube.create({ retrieve_player: true });
+export function getClient(createClient = () => Innertube.create({ retrieve_player: true })) {
+    if (!clientPromise) {
+        clientPromise = Promise.resolve()
+            .then(createClient)
+            .catch((error) => {
+                clientPromise = undefined;
+                throw error;
+            });
+    }
     return clientPromise;
 }
 
@@ -36,25 +46,32 @@ function metadataFromInfo(info) {
     };
 }
 
-async function saveStream(stream, filePath, maxBytes, options) {
-    const handle = await fs.open(filePath, "wx");
+export async function saveStream(stream, filePath, maxBytes, options) {
+    const partialPath = `${filePath}.part`;
     let bytes = 0;
-
-    try {
-        for await (const chunk of stream) {
-            if (options.signal?.aborted)
-                throw Object.assign(new Error("The download was cancelled."), { name: "AbortError" });
+    const input = typeof stream.getReader === "function" ? Readable.fromWeb(stream) : Readable.from(stream);
+    const limiter = new Transform({
+        transform(chunk, _encoding, callback) {
             bytes += chunk.byteLength;
             if (bytes > maxBytes) {
-                throw userError(`The source exceeded ${formatBytes(maxBytes)}.`, "FILE_TOO_LARGE", {
-                    stopFallback: true,
-                });
+                callback(
+                    userError(`The source exceeded ${formatBytes(maxBytes)}.`, "FILE_TOO_LARGE", {
+                        stopFallback: true,
+                    }),
+                );
+                return;
             }
-            await handle.write(chunk);
             options.onProgress?.({ downloadedBytes: bytes, totalBytes: null });
-        }
-    } finally {
-        await handle.close();
+            callback(null, chunk);
+        },
+    });
+
+    try {
+        await pipeline(input, limiter, createWriteStream(partialPath, { flags: "wx" }), { signal: options.signal });
+        await fs.rename(partialPath, filePath);
+    } catch (error) {
+        await fs.rm(partialPath, { force: true }).catch(() => {});
+        throw error;
     }
 }
 

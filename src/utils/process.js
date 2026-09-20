@@ -24,7 +24,8 @@ function appendCapped(current, chunk) {
 function emitLines(buffer, chunk, callback) {
     const combined = buffer + chunk;
     const lines = combined.split(/\r?\n|\r/g);
-    const remainder = lines.pop() ?? "";
+    const unfinished = lines.pop() ?? "";
+    const remainder = unfinished.length > MAX_CAPTURE_BYTES ? unfinished.slice(-MAX_CAPTURE_BYTES) : unfinished;
     if (callback) {
         for (const line of lines) {
             if (line) callback(line.replace(/\x1b\[[0-9;]*m/g, ""));
@@ -85,12 +86,12 @@ export function runProcess(command, args, options = {}) {
         child.stdout.on("data", (chunk) => {
             const text = chunk.toString();
             stdout = appendCapped(stdout, text);
-            stdoutRemainder = emitLines(stdoutRemainder, text, options.onStdoutLine);
+            if (options.onStdoutLine) stdoutRemainder = emitLines(stdoutRemainder, text, options.onStdoutLine);
         });
         child.stderr.on("data", (chunk) => {
             const text = chunk.toString();
             stderr = appendCapped(stderr, text);
-            stderrRemainder = emitLines(stderrRemainder, text, options.onStderrLine);
+            if (options.onStderrLine) stderrRemainder = emitLines(stderrRemainder, text, options.onStderrLine);
         });
 
         child.once("error", (error) => {

@@ -41,9 +41,9 @@ function requireGuildDeliveryPermissions(interaction) {
 }
 
 function privateReplyForInteraction(interaction, publicRepliesInGuilds = config.publicRepliesInGuilds) {
-    if (!interaction.inGuild()) return false;
     const requestedPrivate = interaction.options.getBoolean("private") ?? false;
-    return requestedPrivate || !publicRepliesInGuilds;
+    if (requestedPrivate) return true;
+    return interaction.inGuild() && !publicRepliesInGuilds;
 }
 
 function uploadTargetBytesForInteraction(interaction, configuredTargetBytes = config.discordUploadTargetBytes) {
@@ -71,23 +71,38 @@ function releaseUserSlot(userId) {
     else activeByUser.set(userId, active - 1);
 }
 
+function jobTimeoutError(cause) {
+    return userError(
+        "The job timed out before the download finished. Try a smaller file or a faster source.",
+        "JOB_TIMEOUT",
+        { cause },
+    );
+}
+
 /**
  * Executes a media download, prepares the result for Discord, and commits it to the reply.
  * @param {Object} interaction - The Discord interaction associated with the media job.
  * @param {Object} reply - The reply session used to report progress and deliver the result.
  * @param {Object} request - The media request, including its URL, output type, and compression preference.
  */
-async function runMediaJob(interaction, reply, request) {
-    const controller = new AbortController();
-    const signal = AbortSignal.any([controller.signal, tempOwnershipSignal]);
-    const timeout = setTimeout(() => controller.abort(), config.jobTimeoutMs);
+async function runMediaJob(interaction, reply, request, options = {}) {
+    const deadlineController = options.signal ? null : new AbortController();
+    const deadlineSignal = options.signal ?? deadlineController.signal;
+    const deadlineTimeout = deadlineController
+        ? setTimeout(
+              () => deadlineController.abort(new DOMException("The media job timed out.", "TimeoutError")),
+              config.jobTimeoutMs,
+          )
+        : null;
+    const signal = AbortSignal.any([deadlineSignal, tempOwnershipSignal]);
+    const executeDownload = options.downloadMedia ?? downloadMedia;
     const uploadTargetBytes = uploadTargetBytesForInteraction(interaction);
     let tempDir;
 
     try {
         tempDir = await createRequestTempDir();
         const downloadStarted = performance.now();
-        const download = await downloadMedia(request.url, tempDir, {
+        const download = await executeDownload(request.url, tempDir, {
             outputType: request.outputType,
             maxBytes: config.maxDownloadBytes,
             targetBytes: uploadTargetBytes,
@@ -129,7 +144,11 @@ async function runMediaJob(interaction, reply, request) {
 
         log.info(`Completed media job for ${interaction.user.tag}: ${output.fileName} via ${download.method}`);
     } catch (caught) {
-        const error = tempOwnershipSignal.aborted && !isUserFacingError(caught) ? tempOwnershipSignal.reason : caught;
+        const error = tempOwnershipSignal.aborted
+            ? tempOwnershipSignal.reason
+            : deadlineSignal.aborted && !isUserFacingError(caught)
+              ? jobTimeoutError(caught)
+              : caught;
         if (isUserFacingError(error)) {
             log.warn(`Media job ended for ${interaction.user.tag} (${error.code}): ${error.message}`);
         } else {
@@ -137,25 +156,50 @@ async function runMediaJob(interaction, reply, request) {
         }
         await reply.fail(error);
     } finally {
-        clearTimeout(timeout);
+        if (deadlineTimeout) clearTimeout(deadlineTimeout);
         await cleanupTempDir(tempDir);
     }
 }
 
-async function enqueue(interaction, reply, request) {
-    if (queue.size >= config.maxQueueSize)
+export async function enqueue(interaction, reply, request, options = {}) {
+    const jobQueue = options.queue ?? queue;
+    if (jobQueue.size >= config.maxQueueSize)
         throw userError("The download queue is full. Try again in a minute.", "QUEUE_FULL");
 
     acquireUserSlot(interaction.user.id);
+    const timeoutMs = options.timeoutMs ?? config.jobTimeoutMs;
+    const deadlineAt = Date.now() + timeoutMs;
+    const queueController = new AbortController();
+    const queueTimeout = setTimeout(
+        () => queueController.abort(new DOMException("The media request timed out in the queue.", "TimeoutError")),
+        timeoutMs,
+    );
 
     try {
-        if (queue.pending >= config.maxConcurrentJobs) {
-            const position = queue.size + 1;
+        if (jobQueue.pending >= config.maxConcurrentJobs) {
+            const position = jobQueue.size + 1;
             await reply.update({ phase: "queued", detail: `Queue position: ${position}` }, { force: true });
         }
 
-        await queue.add(() => runMediaJob(interaction, reply, request));
+        await jobQueue.add(
+            async () => {
+                clearTimeout(queueTimeout);
+                const remainingMs = Math.max(1, deadlineAt - Date.now());
+                const runController = new AbortController();
+                const runTimeout = setTimeout(
+                    () => runController.abort(new DOMException("The media job timed out.", "TimeoutError")),
+                    remainingMs,
+                );
+                try {
+                    await runMediaJob(interaction, reply, request, { signal: runController.signal });
+                } finally {
+                    clearTimeout(runTimeout);
+                }
+            },
+            { signal: queueController.signal },
+        );
     } finally {
+        clearTimeout(queueTimeout);
         releaseUserSlot(interaction.user.id);
     }
 }
