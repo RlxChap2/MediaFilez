@@ -134,11 +134,23 @@ export async function getMediaInfo(inputPath, options = {}) {
 
 export async function extractThumbnail(inputPath, outputDir, outputName = "thumbnail.jpg", options = {}) {
     const outputPath = path.join(outputDir, outputName);
+    let lastError;
 
-    await runFFmpeg(["-ss", "00:00:01", "-i", inputPath, "-frames:v", "1", "-q:v", "2", "-y", outputPath], options);
+    for (const seek of ["00:00:01", "00:00:00"]) {
+        await fs.rm(outputPath, { force: true });
+        try {
+            await runFFmpeg(["-ss", seek, "-i", inputPath, "-frames:v", "1", "-q:v", "2", "-y", outputPath], options);
+            await fs.access(outputPath);
+            return outputPath;
+        } catch (error) {
+            if (error.name === "AbortError" || error.code === "ABORT_ERR" || error.code === "PROCESS_TIMEOUT") {
+                throw error;
+            }
+            lastError = error;
+        }
+    }
 
-    await fs.access(outputPath);
-    return outputPath;
+    throw lastError;
 }
 
 function audioBitrateForTarget(duration, targetSizeBytes) {

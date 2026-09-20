@@ -12,8 +12,6 @@ import {
     requireFFmpeg,
 } from "../utils/ffmpeg.js";
 
-const AUDIO_EXTENSIONS = new Set(["mp3", "m4a", "aac", "ogg", "opus", "flac", "wav", "webm"]);
-
 async function copyImage(input, tempDir, outputName) {
     const outputPath = path.join(tempDir, outputName);
     if (path.resolve(input.filePath) !== path.resolve(outputPath)) await fs.copyFile(input.filePath, outputPath);
@@ -81,8 +79,7 @@ export async function prepareMediaForDiscord(download, options) {
 
     if (outputType === "audio") {
         const extension = (download.extension || path.extname(download.fileName).slice(1)).toLowerCase();
-        const canSendOriginal =
-            download.isAudioOnly || download.mediaKind === "audio" || AUDIO_EXTENSIONS.has(extension);
+        const canSendOriginal = download.isAudioOnly || download.mediaKind === "audio";
         if (canSendOriginal && download.sizeBytes <= maxAttachmentBytes) {
             outputName = makeSafeFileName(download.fileName, "audio", extension || "m4a");
             note = "downloaded as audio";

@@ -4,7 +4,18 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { prepareMediaForDiscord } from "../../src/media/processor.js";
-import { checkFFmpeg, compressImage, getMediaInfo, runFFmpeg } from "../../src/utils/ffmpeg.js";
+import { checkFFmpeg, compressImage, extractThumbnail, getMediaInfo, runFFmpeg } from "../../src/utils/ffmpeg.js";
+
+test("extracts an image from a sub-second video", async (t) => {
+    if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-short-video-"));
+    const input = path.join(dir, "short.mp4");
+    t.after(() => fs.rm(dir, { recursive: true, force: true }));
+    await runFFmpeg(["-f", "lavfi", "-i", "color=c=blue:s=64x64:d=0.2", "-c:v", "libx264", "-y", input]);
+
+    const output = await extractThumbnail(input, dir);
+    assert.ok((await fs.stat(output)).size > 0);
+});
 
 test("auto fits low-bitrate video and reports transcoding progress", async (t) => {
     if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
@@ -94,6 +105,54 @@ test("auto fits oversized audio instead of rejecting the original", async (t) =>
     assert.ok(output.sizeBytes <= targetSize);
     assert.equal(output.extension, "mp3");
     assert.match(output.note, /fit Discord/);
+});
+
+test("audio output extracts audio from a WebM video", async (t) => {
+    if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-webm-audio-"));
+    const input = path.join(dir, "source.webm");
+    t.after(() => fs.rm(dir, { recursive: true, force: true }));
+    await runFFmpeg([
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=blue:s=160x90:d=1",
+        "-f",
+        "lavfi",
+        "-i",
+        "sine=frequency=440:duration=1",
+        "-shortest",
+        "-c:v",
+        "libvpx-vp9",
+        "-c:a",
+        "libopus",
+        "-y",
+        input,
+    ]);
+    const inputInfo = await getMediaInfo(input);
+
+    const output = await prepareMediaForDiscord(
+        {
+            filePath: input,
+            fileName: "source.webm",
+            sizeBytes: (await fs.stat(input)).size,
+            mediaKind: "video",
+            extension: "webm",
+            isAudioOnly: false,
+            mediaInfo: inputInfo,
+        },
+        {
+            outputType: "audio",
+            tempDir: dir,
+            maxAttachmentBytes: 10 * 1024 * 1024,
+            allowCompression: true,
+        },
+    );
+
+    const outputInfo = await getMediaInfo(output.filePath);
+    assert.equal(output.extension, "mp3");
+    assert.equal(outputInfo.hasVideo, false);
+    assert.equal(outputInfo.hasAudio, true);
 });
 
 test("auto fits oversized images instead of rejecting the original", async (t) => {
