@@ -68,6 +68,12 @@ test("streams a large Discord multipart upload with bounded memory", async (t) =
             { applicationId: "123456789", token: "interaction-token" },
             {
                 content: "Ready",
+                components: [
+                    {
+                        type: 1,
+                        components: [{ type: 2, style: 2, label: "Nerd Info", custom_id: "media-nerd:v1:test" }],
+                    },
+                ],
                 filePath,
                 fileName: 'safe " name.bin',
                 sizeBytes: fileSize,
@@ -81,6 +87,7 @@ test("streams a large Discord multipart upload with bounded memory", async (t) =
     assert.equal(receivedBytes, expectedBytes);
     assert.match(firstBytes.toString("utf8"), /name="payload_json"/);
     assert.match(firstBytes.toString("utf8"), /"allowed_mentions":\{"parse":\[\]\}/);
+    assert.match(firstBytes.toString("utf8"), /"label":"Nerd Info"/);
     assert.match(firstBytes.toString("utf8"), /filename="safe _ name\.bin"/);
     assert.match(lastBytes.toString("utf8"), /--\r\n$/);
     assert.ok(peakRss - baselineRss < 128 * 1024 * 1024, `RSS grew by ${peakRss - baselineRss} bytes`);

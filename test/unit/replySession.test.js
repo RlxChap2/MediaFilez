@@ -17,7 +17,7 @@ async function fixture(t) {
 const details = { method: "test", downloadMs: 10, processMs: 2, uploadTargetBytes: 25 * 1024 * 1024 };
 
 async function uploadThroughInteraction(interaction, payload) {
-    await interaction.editReply({ content: payload.content, files: [payload] });
+    await interaction.editReply({ content: payload.content, components: payload.components, files: [payload] });
 }
 
 test("commits once and never overwrites success with a later error", async (t) => {
@@ -38,7 +38,7 @@ test("commits once and never overwrites success with a later error", async (t) =
     assert.equal(edits[0].files.length, 1);
 });
 
-test("shows the engine and timings as readable delivery details", async (t) => {
+test("keeps the media reply compact and adds a Nerd Info button", async (t) => {
     const output = { ...(await fixture(t)), fileName: "clip_test.mp4" };
     const edits = [];
     const interaction = {
@@ -55,19 +55,12 @@ test("shows the engine and timings as readable delivery details", async (t) => {
         metadata: { title: "A clean video title", creator: "The creator" },
     });
 
-    assert.equal(
-        edits[0].content,
-        [
-            "**Ready: clip\\_test.mp4**",
-            "-# Title: A clean video title (The creator)",
-            "-# Engine: yt-dlp",
-            "-# Download: 21.60s · Processing: 1m 5.0s",
-            "-# Upload target: 20.0 MB · 5 B",
-        ].join("\n"),
-    );
+    assert.equal(edits[0].content, "-# 5 B");
+    assert.equal(edits[0].components[0].components[0].label, "Nerd Info");
+    assert.match(edits[0].components[0].components[0].custom_id, /^media-nerd:v1:yt-dlp\./);
 });
 
-test("omits page titles containing links without hiding delivery diagnostics", async (t) => {
+test("does not place page metadata in the public media reply", async (t) => {
     const output = await fixture(t);
     let sent;
     const reply = new ReplySession(
@@ -81,10 +74,8 @@ test("omits page titles containing links without hiding delivery diagnostics", a
         recovered: true,
     });
 
-    assert.doesNotMatch(sent.content, /amzn\.to|AmazonPrime|Title:/);
-    assert.match(sent.content, /Engine: test/);
-    assert.match(sent.content, /Download: 10\.0ms/);
-    assert.match(sent.content, /file was complete/);
+    assert.equal(sent.content, "-# 5 B");
+    assert.equal(sent.components[0].components[0].label, "Nerd Info");
 });
 
 test("does not try to change reply visibility after the initial response", async () => {
