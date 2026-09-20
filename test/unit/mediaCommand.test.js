@@ -12,3 +12,12 @@ test("exposes auto, video, image, and audio without a separate thumbnail choice"
     );
     assert.equal(OUTPUT_TYPES.has("auto"), true);
 });
+
+test("offers an optional private boolean that defaults to public delivery", () => {
+    const command = data.toJSON();
+    const privateOption = command.options.find((option) => option.name === "private");
+
+    assert.equal(privateOption.type, 5);
+    assert.equal(privateOption.required, false);
+    assert.match(privateOption.description, /only to you/i);
+});

@@ -2,14 +2,35 @@
 
 MediaFilez downloads public media into Discord through one `/media` command. It tries ordered engines, validates every result, fits oversized video, audio, or images to the current interaction limit, and streams one confirmed attachment without buffering the whole file in memory.
 
-The command has four output choices:
+## Command
 
-- **Auto (detect media)** accepts the first validated video, audio, or image found at the URL and applies the matching processing path.
-- **Video** downloads playable video.
-- **Image / video frame** returns a source image, page thumbnail, or a frame from video.
-- **Audio** downloads or extracts audio.
+`/media` supports server installs and user installs. It can run in a server channel, a bot DM, or a private channel.
+
+| Option         | Required | Default | Purpose                                                          |
+| -------------- | -------- | ------- | ---------------------------------------------------------------- |
+| `url`          | yes      | none    | Public media page or direct media URL                            |
+| `output`       | yes      | none    | `auto`, `video`, `image`, or `audio`                             |
+| `fit_to_limit` | no       | `true`  | Process oversized media to fit the current Discord limit         |
+| `private`      | no       | `false` | Make progress and the final result visible only to the requester |
+
+Each output value changes validation and processing:
+
+| Output              | Result                                                                                   |
+| ------------------- | ---------------------------------------------------------------------------------------- |
+| Auto (detect media) | Accepts the first validated video, audio, or image and uses the matching processing path |
+| Video               | Returns playable video                                                                   |
+| Image / video frame | Returns a source image, page thumbnail, or a frame extracted from video                  |
+| Audio               | Returns source audio or extracts an MP3 audio track from video                           |
+
+Private results use Discord's ephemeral interaction reply, so they do not depend on the user's DM settings. An operator can make every guild result private with `PUBLIC_REPLIES_IN_GUILDS=false`.
 
 `Thumbnail` no longer appears as a separate choice. Old interactions using its stored value remain valid while Discord propagates the updated command.
+
+## Discord reply
+
+The original interaction shows queue position, the active engine, transfer progress when an engine reports it, and the processing or upload stage. A successful reply contains the attachment, its final size, and a `Nerd Info` button.
+
+`Nerd Info` opens an ephemeral message with the filename, selected engine, download time, processing time, upload target, final size, and any processing or recovery note. Its small payload lives in the button ID, so the button still works after a bot restart. It does not contain the source URL, cookies, or credentials.
 
 ## What changed in 2.1
 
@@ -49,7 +70,11 @@ Engine order depends on the host and requested output.
 
 Each engine writes into its own attempt directory. MediaFilez checks file signatures and FFprobe streams before committing a result. A fallback starts only after the prior attempt stops and leaves no valid file. A process error does not discard a complete file left behind.
 
-The platform engines cover many sites, including Pinterest, while unknown pages can still expose media through standard page metadata or direct HTTP. Unknown URLs are not passed blindly to yt-dlp or gallery-dl: keeping them in the redirect-, DNS-, and byte-guarded HTTP path prevents an arbitrary page from expanding the subprocess network boundary. Add a host to an explicit platform route only after its extractor and security behavior are known.
+For `auto` and `video`, MediaFilez asks yt-dlp for an audio-bearing alternative when the first valid video is silent and yt-dlp remains in the plan. It uses the second result if validation passes. If that attempt fails, MediaFilez keeps the original silent video instead of turning a usable download into an error.
+
+Unknown pages can still expose media through standard page metadata or direct HTTP. They are not passed blindly to yt-dlp or gallery-dl: keeping them in the redirect-, DNS-, and byte-guarded HTTP path prevents an arbitrary page from expanding the subprocess network boundary. Add a host to an explicit platform route only after its extractor and security behavior are known.
+
+Recognized platform routes include TikTok short links (`vm.tiktok.com` and `vt.tiktok.com`), X/Twitter, Facebook, Tumblr, Bluesky, SoundCloud, Vimeo, Snapchat, Streamable, VK, Bilibili, Dailymotion, Loom, Newgrounds, OK.ru, Rutube, and Twitch. Recognition selects an engine plan; it does not guarantee that the source site will allow a download.
 
 No downloader can guarantee every website: sites change markup, expire media URLs, block data-center addresses, require fresh cookies, or remove extractor access. See the current [yt-dlp supported sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md) and [gallery-dl supported sites](https://github.com/mikf/gallery-dl/blob/master/docs/supportedsites.md).
 
@@ -81,6 +106,12 @@ pnpm start
 
 Global command updates can take time to appear in every Discord client. `pnpm run deploy` must run after changing command choices. Deployment upserts `/media` without deleting Discord's Activity Entry Point or unrelated commands.
 
+The included PM2 file runs `prod:start`, which publishes the current command definition before starting the bot:
+
+```bash
+pm2 start ecosystem.config.cjs
+```
+
 Useful diagnostics:
 
 ```bash
@@ -100,10 +131,12 @@ Set `GALLERY_DL_AUTO_INSTALL=false` in the shell that runs `pnpm install` to ski
 
 ## Docker and Cobalt
 
-The Compose stack starts MediaFilez and two private Cobalt v11 APIs on an internal network.
+The Compose stack starts MediaFilez and two private Cobalt v11 APIs on an internal network. The container starts the bot but does not publish slash-command changes on its own.
 
 ```bash
-docker compose up -d --build
+docker compose build mediafilez
+docker compose run --rm mediafilez pnpm run deploy
+docker compose up -d
 docker compose logs -f --tail=100
 docker compose run --rm mediafilez pnpm run preflight
 ```
@@ -145,30 +178,75 @@ services:
 
 The source platform may associate requests made with these cookies with the dedicated account. MediaFilez does not bypass private-account permissions, paywalls, DRM, or removed content. Download only media you have permission to access and save.
 
-## Main configuration
+## Configuration
 
-| Variable                       | Default                | Purpose                                                                                                            |
-| ------------------------------ | ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `MAX_DOWNLOAD_SIZE`            | `500mb`                | Maximum source artifact before processing                                                                          |
-| `MAX_CONCURRENT_JOBS`          | `4`                    | Jobs running at once                                                                                               |
-| `MAX_QUEUE_SIZE`               | `50`                   | Waiting jobs before backpressure rejects work                                                                      |
-| `MAX_CONCURRENT_JOBS_PER_USER` | `2`                    | Per-user running or queued job cap                                                                                 |
-| `DISCORD_UPLOAD_TARGET_SIZE`   | `500mb`                | Operator ceiling; the interaction limit can lower it                                                               |
-| `DISCORD_UPLOAD_ATTEMPTS`      | `3`                    | Verified attachment upload attempts                                                                                |
-| `JOB_TIMEOUT_MS`               | `840000`               | Whole-job timeout below Discord's token lifetime                                                                   |
-| `YTDLP_CONCURRENT_FRAGMENTS`   | `4`                    | Fragment transfers inside one yt-dlp attempt                                                                       |
-| `YTDLP_IMPERSONATE`            | disabled               | Optional yt-dlp impersonation target; enable only when `yt-dlp --list-impersonate-targets` reports it as available |
-| `FFMPEG_THREADS`               | `2`                    | Encoder threads per fitting job                                                                                    |
-| `GALLERY_DL_ENABLED`           | `true`                 | Enables gallery and image extraction                                                                               |
-| `PAGE_METADATA_ENABLED`        | `true`                 | Enables generic page metadata extraction                                                                           |
-| `PAGE_METADATA_MAX_SIZE`       | `1mb`                  | Maximum HTML read by the metadata engine                                                                           |
-| `INSTAGRAM_PROXY_HOSTS`        | `www.kkkinstagram.com` | Ordered public Instagram relay hosts; use `none` to disable                                                        |
-| `REDDIT_PROXY_HOSTS`           | `redditez.com`         | Ordered public Reddit embed relay hosts; use `none` to disable                                                     |
-| `COBALT_API_ENDPOINTS`         | empty                  | Operator-authorized instances; Compose supplies its two internal Cobalt endpoints                                  |
-| `COBALT_DIRECTORY_ENABLED`     | `false`                | Opt in to tested, Turnstile-free third-party instances from cobalt.directory                                       |
-| `DISABLED_ENGINES`             | empty                  | Engine names removed from every plan                                                                               |
+Start with `.env.example`. Size values accept `b`, `kb`, `kib`, `mb`, `mib`, `gb`, or `gib`. Timeout values are milliseconds.
 
-`.env.example` contains timeout, upload retry, path override, cookie, and Cobalt settings.
+### Discord and job limits
+
+| Variable                        | Default  | Purpose                                                  |
+| ------------------------------- | -------- | -------------------------------------------------------- |
+| `BOT_TOKEN`                     | required | Discord bot token                                        |
+| `CLIENT_ID`                     | required | Discord application ID used to publish `/media`          |
+| `PUBLIC_REPLIES_IN_GUILDS`      | `true`   | Guild reply visibility; `false` forces ephemeral replies |
+| `MAX_DOWNLOAD_SIZE`             | `500mb`  | Maximum source artifact before processing                |
+| `MIN_FREE_DISK_SPACE`           | `1gb`    | Free temp-storage floor checked before a job starts      |
+| `MAX_CONCURRENT_JOBS`           | `4`      | Jobs running at once                                     |
+| `MAX_QUEUE_SIZE`                | `50`     | Waiting jobs accepted before backpressure rejects work   |
+| `MAX_CONCURRENT_JOBS_PER_USER`  | `2`      | Per-user running or queued job cap                       |
+| `DISCORD_UPLOAD_TARGET_SIZE`    | `500mb`  | Operator ceiling; the interaction limit can lower it     |
+| `DISCORD_UPLOAD_ATTEMPTS`       | `3`      | Verified attachment upload attempts                      |
+| `DISCORD_UPLOAD_RETRY_DELAY_MS` | `1500`   | Base delay between verified upload retries               |
+| `STATUS_UPDATE_INTERVAL_MS`     | `2500`   | Minimum delay between progress-message edits             |
+
+### Timeouts
+
+| Variable                   | Default  | Purpose                                     |
+| -------------------------- | -------- | ------------------------------------------- |
+| `HTTP_RESPONSE_TIMEOUT_MS` | `45000`  | Time allowed to receive an HTTP response    |
+| `HTTP_IDLE_TIMEOUT_MS`     | `60000`  | Maximum pause between downloaded chunks     |
+| `YTDLP_TIMEOUT_MS`         | `480000` | yt-dlp and gallery-dl process timeout       |
+| `FFMPEG_TIMEOUT_MS`        | `600000` | FFmpeg and FFprobe process timeout          |
+| `JOB_TIMEOUT_MS`           | `840000` | Whole-job deadline                          |
+| `DISCORD_REST_TIMEOUT_MS`  | `300000` | Discord request and streamed upload timeout |
+| `DISCORD_REST_RETRIES`     | `0`      | Retries inside discord.js REST calls        |
+
+### Download and processing tools
+
+| Variable                     | Default                | Purpose                                                                                            |
+| ---------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------- |
+| `MEDIA_COOKIES_FILE`         | empty                  | Netscape cookie source shared by yt-dlp and gallery-dl                                             |
+| `YTDLP_COOKIES_FROM_BROWSER` | empty                  | Local browser-cookie extraction                                                                    |
+| `YTDLP_PATH`                 | automatic              | Operator-managed yt-dlp executable                                                                 |
+| `YTDLP_CONCURRENT_FRAGMENTS` | `4`                    | Fragment transfers inside one yt-dlp attempt                                                       |
+| `YTDLP_IMPERSONATE`          | disabled               | Impersonation target; enable only when `yt-dlp --list-impersonate-targets` reports it as available |
+| `FFMPEG_PATH`                | automatic              | Operator-managed FFmpeg executable                                                                 |
+| `FFPROBE_PATH`               | automatic              | Operator-managed FFprobe executable                                                                |
+| `FFMPEG_THREADS`             | `2`                    | Encoder threads per fitting job                                                                    |
+| `YOUTUBE_JS_ENABLED`         | `true`                 | Enables the YouTube.js fallback                                                                    |
+| `GALLERY_DL_ENABLED`         | `true`                 | Enables gallery and image extraction                                                               |
+| `GALLERY_DL_PATH`            | automatic              | Operator-managed gallery-dl executable                                                             |
+| `PAGE_METADATA_ENABLED`      | `true`                 | Enables generic page metadata extraction                                                           |
+| `PAGE_METADATA_MAX_SIZE`     | `1mb`                  | Maximum HTML read by the metadata engine                                                           |
+| `INSTAGRAM_PROXY_HOSTS`      | `www.kkkinstagram.com` | Ordered Instagram relay hosts; use `none` to disable                                               |
+| `REDDIT_PROXY_HOSTS`         | `redditez.com`         | Ordered Reddit embed relay hosts; use `none` to disable                                            |
+| `DISABLED_ENGINES`           | empty                  | Engine names removed from every plan                                                               |
+
+### Cobalt and runtime
+
+| Variable                     | Default                                                     | Purpose                                                                 |
+| ---------------------------- | ----------------------------------------------------------- | ----------------------------------------------------------------------- |
+| `COBALT_API_ENDPOINTS`       | empty                                                       | Operator-authorized instances; Compose supplies two internal URLs       |
+| `COBALT_DIRECTORY_ENABLED`   | `false`                                                     | Opt in to tested, Turnstile-free entries from cobalt.directory          |
+| `COBALT_DIRECTORY_URL`       | `https://cobalt.directory/api/working?type=api&turnstile=0` | Directory API used when discovery is enabled                            |
+| `COBALT_ENDPOINT_TIMEOUT_MS` | `12000`                                                     | Cobalt endpoint request timeout                                         |
+| `COBALT_MAX_ENDPOINTS`       | `5`                                                         | Maximum configured and discovered endpoints                             |
+| `COBALT_FAILURE_COOLDOWN_MS` | `60000`                                                     | Local cooldown after an endpoint failure                                |
+| `COBALT_API_KEY`             | empty                                                       | Credential for operator-configured Cobalt endpoints                     |
+| `COBALT_AUTH_SCHEME`         | `Api-Key`                                                   | Authorization scheme paired with `COBALT_API_KEY`                       |
+| `TEMP_PREFIX`                | `mediafilez-`                                               | Temp-directory prefix; it must be a plain name of at least 8 characters |
+| `HTTP_USER_AGENT`            | `MediaFilez/2.1 (Discord media downloader)`                 | User-Agent for HTTP, Cobalt, and Discord upload requests                |
+| `DEBUG`                      | `false`                                                     | Enables debug log lines                                                 |
 
 ## Discord limits
 

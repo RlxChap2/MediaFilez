@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { PermissionFlagsBits, PermissionsBitField } from "discord.js";
-import { missingGuildDeliveryPermissions, uploadTargetBytesForInteraction } from "../../src/jobs/mediaJob.js";
+import {
+    missingGuildDeliveryPermissions,
+    privateReplyForInteraction,
+    uploadTargetBytesForInteraction,
+} from "../../src/jobs/mediaJob.js";
 
 const MiB = 1024 * 1024;
 
@@ -47,4 +51,22 @@ test("requires thread send permission only inside a thread", () => {
 test("does not apply guild bot permissions to a user-installed command", () => {
     const interaction = guildInteraction([], { guildInstall: false });
     assert.deepEqual(missingGuildDeliveryPermissions(interaction, true), []);
+});
+
+function privacyInteraction(value, inGuild = true) {
+    return {
+        inGuild: () => inGuild,
+        options: { getBoolean: (name) => (name === "private" ? value : null) },
+    };
+}
+
+test("makes a guild reply private only when the user requests it", () => {
+    assert.equal(privateReplyForInteraction(privacyInteraction(true), true), true);
+    assert.equal(privateReplyForInteraction(privacyInteraction(false), true), false);
+    assert.equal(privateReplyForInteraction(privacyInteraction(null), true), false);
+});
+
+test("keeps the operator privacy setting and treats DMs as already private", () => {
+    assert.equal(privateReplyForInteraction(privacyInteraction(false), false), true);
+    assert.equal(privateReplyForInteraction(privacyInteraction(true, false), true), false);
 });

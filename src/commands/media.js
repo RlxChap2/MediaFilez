@@ -22,4 +22,7 @@ export const data = new SlashCommandBuilder()
     )
     .addBooleanOption((option) =>
         option.setName("fit_to_limit").setDescription("Transcode only when needed to fit this Discord upload limit"),
+    )
+    .addBooleanOption((option) =>
+        option.setName("private").setDescription("Show the result only to you (default: false)"),
     );

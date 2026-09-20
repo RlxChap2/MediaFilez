@@ -1,10 +1,10 @@
 import { setTimeout as sleep } from "node:timers/promises";
-import { escapeMarkdown } from "discord.js";
 import { config } from "../../config.js";
 import { DeliveryUnknownError, messageForError, userError } from "../../utils/errors.js";
 import { formatBytes, formatElapsed } from "../../utils/format.js";
 import { log } from "../../utils/logger.js";
 import { uploadDiscordReply } from "./discordUpload.js";
+import { createNerdInfoComponents } from "./nerdInfo.js";
 
 const PHASE_COPY = {
     queued: "Queued",
@@ -36,26 +36,8 @@ function statusCopy(status) {
     return `${base}${engine}${progressText(status.progress)}...`;
 }
 
-function deliveredCopy(output, details) {
-    const lines = [
-        `**Ready: ${escapeMarkdown(output.fileName)}**`,
-        `-# Engine: ${escapeMarkdown(String(details.method))}`,
-        `-# Download: ${formatElapsed(details.downloadMs)} · Processing: ${formatElapsed(details.processMs)}`,
-        `-# Upload target: ${formatBytes(details.uploadTargetBytes)} · ${formatBytes(output.sizeBytes)}`,
-    ];
-
-    const title = details.metadata?.title?.replace(/\s+/g, " ").trim();
-    const creator = details.metadata?.creator?.replace(/\s+/g, " ").trim();
-    const containsLink = (value) => /https?:\/\/|www\./i.test(value);
-
-    if (title && title !== output.fileName && !containsLink(title)) {
-        const credit = creator && !containsLink(creator) ? ` (${escapeMarkdown(creator.slice(0, 60))})` : "";
-        lines.splice(1, 0, `-# Title: ${escapeMarkdown(title.slice(0, 100))}${credit}`);
-    }
-
-    if (output.note) lines.push(`Note: ${escapeMarkdown(String(output.note))}`);
-    if (details.recovered) lines.push("Note: The downloader exited with an error, but the file was complete.");
-    return lines.join("\n");
+function deliveredCopy(output) {
+    return `-# ${formatBytes(output.sizeBytes)}`;
 }
 
 function hasExpectedAttachment(message, expected) {
@@ -186,7 +168,8 @@ export class ReplySession {
 
         for (let attempt = 1; attempt <= this.uploadAttempts; attempt += 1) {
             const payload = {
-                content: deliveredCopy(output, details),
+                content: deliveredCopy(output),
+                components: createNerdInfoComponents(output, details),
                 filePath: output.filePath,
                 fileName: output.fileName,
                 sizeBytes: output.sizeBytes,

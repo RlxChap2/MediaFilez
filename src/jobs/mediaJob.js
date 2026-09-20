@@ -40,6 +40,12 @@ function requireGuildDeliveryPermissions(interaction) {
     );
 }
 
+function privateReplyForInteraction(interaction, publicRepliesInGuilds = config.publicRepliesInGuilds) {
+    if (!interaction.inGuild()) return false;
+    const requestedPrivate = interaction.options.getBoolean("private") ?? false;
+    return requestedPrivate || !publicRepliesInGuilds;
+}
+
 function uploadTargetBytesForInteraction(interaction, configuredTargetBytes = config.discordUploadTargetBytes) {
     return Math.min(
         interaction.attachmentSizeLimit || FILE_LIMITS.DEFAULT_UPLOAD,
@@ -159,8 +165,8 @@ async function enqueue(interaction, reply, request) {
  * @param {import("discord.js").ChatInputCommandInteraction} interaction - The Discord command interaction containing the media URL and output options.
  */
 export async function handleMediaCommand(interaction) {
-    requireGuildDeliveryPermissions(interaction);
-    const privateReply = interaction.inGuild() && !config.publicRepliesInGuilds;
+    const privateReply = privateReplyForInteraction(interaction);
+    if (!privateReply) requireGuildDeliveryPermissions(interaction);
     const deferOptions = privateReply ? { flags: MessageFlags.Ephemeral } : {};
     await interaction.deferReply(deferOptions);
     log.info(`/media from ${interaction.user.tag} context=${interaction.context ?? "unknown"}`);
@@ -182,4 +188,4 @@ export async function handleMediaCommand(interaction) {
     }
 }
 
-export { missingGuildDeliveryPermissions, runMediaJob, uploadTargetBytesForInteraction };
+export { missingGuildDeliveryPermissions, privateReplyForInteraction, runMediaJob, uploadTargetBytesForInteraction };

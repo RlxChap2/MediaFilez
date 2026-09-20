@@ -62,16 +62,18 @@ function encodedFileName(value) {
 /**
  * Creates the multipart form-data sections for a Discord attachment upload.
  * @param {string} boundary - The multipart boundary string.
- * @param {{content: string}} payload - The message payload to include in the request.
+ * @param {{content: string, components?: Array<object>}} payload - The message payload to include in the request.
  * @param {string} fileName - The attachment filename.
  * @returns {{prefix: Buffer, suffix: Buffer}} The multipart prefix and closing boundary buffers.
  */
 function multipartParts(boundary, payload, fileName) {
-    const payloadJson = JSON.stringify({
+    const message = {
         content: payload.content,
         allowed_mentions: { parse: [] },
         attachments: [{ id: 0, filename: fileName }],
-    });
+    };
+    if (payload.components) message.components = payload.components;
+    const payloadJson = JSON.stringify(message);
     const prefix = Buffer.from(
         `--${boundary}\r\n` +
             'Content-Disposition: form-data; name="payload_json"\r\n' +
