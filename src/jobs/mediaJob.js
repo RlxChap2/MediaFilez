@@ -94,7 +94,6 @@ async function runMediaJob(interaction, reply, request, options = {}) {
               config.jobTimeoutMs,
           )
         : null;
-    deadlineTimeout?.unref?.();
     const signal = AbortSignal.any([deadlineSignal, tempOwnershipSignal]);
     const executeDownload = options.downloadMedia ?? downloadMedia;
     const uploadTargetBytes = uploadTargetBytesForInteraction(interaction);
@@ -175,7 +174,6 @@ export async function enqueue(interaction, reply, request, options = {}) {
         () => queueController.abort(new DOMException("The media request timed out in the queue.", "TimeoutError")),
         timeoutMs,
     );
-    queueTimeout.unref?.();
 
     try {
         if (jobQueue.pending >= config.maxConcurrentJobs) {
@@ -192,7 +190,6 @@ export async function enqueue(interaction, reply, request, options = {}) {
                     () => runController.abort(new DOMException("The media job timed out.", "TimeoutError")),
                     remainingMs,
                 );
-                runTimeout.unref?.();
                 try {
                     await runMediaJob(interaction, reply, request, { signal: runController.signal });
                 } finally {
