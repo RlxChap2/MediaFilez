@@ -20,6 +20,19 @@ async function uploadThroughInteraction(interaction, payload) {
     await interaction.editReply({ content: payload.content, components: payload.components, files: [payload] });
 }
 
+test("keeps progress updates clear without exposing the downloader engine", async () => {
+    const edits = [];
+    const interaction = { editReply: async (payload) => edits.push(payload) };
+    const reply = new ReplySession(interaction, { intervalMs: 0 });
+
+    await reply.update({ phase: "resolving", engine: "yt-dlp" });
+    await reply.update({ phase: "downloading", engine: "gallery-dl", progress: { percent: 50 } });
+
+    assert.equal(edits[0].content, "Finding the media...");
+    assert.equal(edits[1].content, "Downloading the media | 50.0%...");
+    assert.doesNotMatch(`${edits[0].content} ${edits[1].content}`, /yt-dlp|gallery-dl/);
+});
+
 test("commits once and never overwrites success with a later error", async (t) => {
     const output = await fixture(t);
     const edits = [];

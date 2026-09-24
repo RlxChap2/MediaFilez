@@ -8,9 +8,9 @@ import { createNerdInfoComponents } from "./nerdInfo.js";
 
 const PHASE_COPY = {
     queued: "Queued",
-    resolving: "Resolving the source",
-    downloading: "Downloading",
-    processing: "Processing media",
+    resolving: "Finding the media",
+    downloading: "Downloading the media",
+    processing: "Preparing the media",
     uploading: "Uploading to Discord",
 };
 
@@ -32,8 +32,7 @@ function progressText(progress) {
 
 function statusCopy(status) {
     const base = status.detail || PHASE_COPY[status.phase] || "Working";
-    const engine = status.engine ? ` with ${status.engine}` : "";
-    return `${base}${engine}${progressText(status.progress)}...`;
+    return `${base}${progressText(status.progress)}...`;
 }
 
 function deliveredCopy(output) {
