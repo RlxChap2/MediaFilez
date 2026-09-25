@@ -75,6 +75,7 @@ export const config = {
     mediaCookiesFile: process.env.MEDIA_COOKIES_FILE || null,
     ytdlpPath: process.env.YTDLP_PATH || null,
     ytdlpCookiesFromBrowser: process.env.YTDLP_COOKIES_FROM_BROWSER || null,
+    ytdlpCookiesForYoutube: parseBoolean(process.env.YTDLP_COOKIES_FOR_YOUTUBE, false),
     ytdlpConcurrentFragments: parseInteger(process.env.YTDLP_CONCURRENT_FRAGMENTS, 4, 1, 16),
     ytdlpImpersonate: ytdlpImpersonate.toLowerCase() === "none" ? null : ytdlpImpersonate || null,
     ffmpegPath: process.env.FFMPEG_PATH || null,
@@ -89,6 +90,7 @@ export const config = {
         process.env.INSTAGRAM_PROXY_HOSTS === undefined
             ? ["www.kkkinstagram.com"]
             : parseList(process.env.INSTAGRAM_PROXY_HOSTS),
+    instagramProxyFirst: parseBoolean(process.env.INSTAGRAM_PROXY_FIRST, false),
     redditProxyHosts:
         process.env.REDDIT_PROXY_HOSTS === undefined ? ["redditez.com"] : parseList(process.env.REDDIT_PROXY_HOSTS),
     disabledEngines: new Set(parseList(process.env.DISABLED_ENGINES).map((item) => item.toLowerCase())),

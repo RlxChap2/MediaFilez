@@ -176,6 +176,8 @@ services:
 
 `YTDLP_COOKIES_FROM_BROWSER` is useful for local diagnosis. A cookie file works better on servers because browsers may lock their databases and Windows DPAPI ties decryption to a user session.
 
+Public YouTube links use an anonymous yt-dlp session by default. This avoids sending an operator's general browser session to YouTube and is often faster from data-center addresses. Set `YTDLP_COOKIES_FOR_YOUTUBE=true` only when restricted YouTube media requires the dedicated account session.
+
 The source platform may associate requests made with these cookies with the dedicated account. MediaFilez does not bypass private-account permissions, paywalls, DRM, or removed content. Download only media you have permission to access and save.
 
 ## Configuration
@@ -217,6 +219,7 @@ Start with `.env.example`. Size values accept `b`, `kb`, `kib`, `mb`, `mib`, `gb
 | ---------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------- |
 | `MEDIA_COOKIES_FILE`         | empty                  | Netscape cookie source shared by yt-dlp and gallery-dl                                             |
 | `YTDLP_COOKIES_FROM_BROWSER` | empty                  | Local browser-cookie extraction                                                                    |
+| `YTDLP_COOKIES_FOR_YOUTUBE`  | `false`                | Send the configured cookie source to YouTube; normally unnecessary for public videos               |
 | `YTDLP_PATH`                 | automatic              | Operator-managed yt-dlp executable                                                                 |
 | `YTDLP_CONCURRENT_FRAGMENTS` | `4`                    | Fragment transfers inside one yt-dlp attempt                                                       |
 | `YTDLP_IMPERSONATE`          | disabled               | Impersonation target; enable only when `yt-dlp --list-impersonate-targets` reports it as available |
@@ -229,6 +232,7 @@ Start with `.env.example`. Size values accept `b`, `kb`, `kib`, `mb`, `mib`, `gb
 | `PAGE_METADATA_ENABLED`      | `true`                 | Enables generic page metadata extraction                                                           |
 | `PAGE_METADATA_MAX_SIZE`     | `1mb`                  | Maximum HTML read by the metadata engine                                                           |
 | `INSTAGRAM_PROXY_HOSTS`      | `www.kkkinstagram.com` | Ordered Instagram relay hosts; use `none` to disable                                               |
+| `INSTAGRAM_PROXY_FIRST`      | `false`                | Try the configured relay before other engines for Instagram video/auto; the relay receives the URL |
 | `REDDIT_PROXY_HOSTS`         | `redditez.com`         | Ordered Reddit embed relay hosts; use `none` to disable                                            |
 | `DISABLED_ENGINES`           | empty                  | Engine names removed from every plan                                                               |
 

@@ -44,3 +44,53 @@ test("gives yt-dlp a private writable cookie copy", async (t) => {
         assert.equal((await fs.stat(cookieArgument)).mode & 0o777, 0o600);
     }
 });
+
+test("uses anonymous yt-dlp requests for ordinary YouTube links by default", async (t) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-ytdlp-"));
+    const attemptDir = path.join(root, "attempt");
+    const originalCookies = path.join(root, "cookies.txt");
+    await fs.mkdir(attemptDir);
+    await fs.writeFile(originalCookies, "# Netscape HTTP Cookie File\n", { mode: 0o400 });
+    t.after(async () => {
+        config.mediaCookiesFile = null;
+        config.ytdlpCookiesForYoutube = false;
+        await fs.chmod(originalCookies, 0o600).catch(() => {});
+        await fs.rm(root, { recursive: true, force: true });
+    });
+
+    config.mediaCookiesFile = originalCookies;
+    config.ytdlpCookiesForYoutube = false;
+    await downloadWithYtDlp("https://youtu.be/example", attemptDir, {
+        outputType: "image",
+        maxBytes: 1024 * 1024,
+        processRunner: async (_executable, args) => {
+            assert.equal(args.includes("--cookies"), false);
+            await fs.writeFile(path.join(attemptDir, "result.png"), PNG);
+        },
+    });
+});
+
+test("allows cookies for YouTube when the operator opts in", async (t) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-ytdlp-"));
+    const attemptDir = path.join(root, "attempt");
+    const originalCookies = path.join(root, "cookies.txt");
+    await fs.mkdir(attemptDir);
+    await fs.writeFile(originalCookies, "# Netscape HTTP Cookie File\n", { mode: 0o400 });
+    t.after(async () => {
+        config.mediaCookiesFile = null;
+        config.ytdlpCookiesForYoutube = false;
+        await fs.chmod(originalCookies, 0o600).catch(() => {});
+        await fs.rm(root, { recursive: true, force: true });
+    });
+
+    config.mediaCookiesFile = originalCookies;
+    config.ytdlpCookiesForYoutube = true;
+    await downloadWithYtDlp("https://www.youtube.com/watch?v=example", attemptDir, {
+        outputType: "image",
+        maxBytes: 1024 * 1024,
+        processRunner: async (_executable, args) => {
+            assert.notEqual(args.indexOf("--cookies"), -1);
+            await fs.writeFile(path.join(attemptDir, "result.png"), PNG);
+        },
+    });
+});

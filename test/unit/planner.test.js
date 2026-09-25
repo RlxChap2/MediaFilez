@@ -42,6 +42,14 @@ test("uses the Instagram redirect fallback before general extractors", () => {
     ]);
 });
 
+test("lets an operator prefer the configured Instagram proxy for video and auto output", () => {
+    const preferred = { ...settings, instagramProxyFirst: true };
+    const expected = ["instagram-proxy", "yt-dlp", "cobalt", "gallery-dl", "page-metadata"];
+
+    assert.deepEqual(planEngines("https://www.instagram.com/reel/example/", "video", preferred), expected);
+    assert.deepEqual(planEngines("https://www.instagram.com/reel/example/", "auto", preferred), expected);
+});
+
 test("sends Pinterest to gallery-dl for video and image posts", () => {
     assert.deepEqual(planEngines("https://www.pinterest.com/pin/example/", "video", settings), [
         "gallery-dl",

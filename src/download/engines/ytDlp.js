@@ -68,13 +68,29 @@ function progressHandler(options) {
     };
 }
 
+function shouldUseCookies(rawUrl) {
+    if (config.ytdlpCookiesForYoutube) return true;
+    try {
+        const host = new URL(rawUrl).hostname.toLowerCase();
+        return !(
+            host === "youtu.be" ||
+            host === "youtube.com" ||
+            host.endsWith(".youtube.com") ||
+            host === "youtube-nocookie.com" ||
+            host.endsWith(".youtube-nocookie.com")
+        );
+    } catch {
+        return true;
+    }
+}
+
 /**
  * Prepares a private copy of the configured media cookie file for yt-dlp.
  * @param {string} attemptDir - The directory where the copied cookie file is created.
  * @return {Promise<string|null>} The copied cookie file path, or `null` when no media cookie file is configured.
  */
-async function prepareCookieFile(attemptDir) {
-    if (!config.mediaCookiesFile) return null;
+async function prepareCookieFile(attemptDir, rawUrl) {
+    if (!config.mediaCookiesFile || !shouldUseCookies(rawUrl)) return null;
 
     const cookieFile = path.join(attemptDir, ".yt-dlp-cookies.txt");
     const contents = await fs.readFile(config.mediaCookiesFile);
@@ -101,7 +117,8 @@ async function prepareCookieFile(attemptDir) {
 export async function downloadWithYtDlp(rawUrl, attemptDir, options = {}) {
     const maxBytes = options.maxBytes ?? config.maxDownloadBytes;
     const outputType = options.outputType ?? "video";
-    const cookieFile = await prepareCookieFile(attemptDir);
+    const useCookies = shouldUseCookies(rawUrl);
+    const cookieFile = await prepareCookieFile(attemptDir, rawUrl);
     const args = [
         "--no-config",
         "--no-playlist",
@@ -137,7 +154,9 @@ export async function downloadWithYtDlp(rawUrl, attemptDir, options = {}) {
     ];
     if (config.ytdlpImpersonate) args.push("--impersonate", config.ytdlpImpersonate);
     if (cookieFile) args.push("--cookies", cookieFile);
-    else if (config.ytdlpCookiesFromBrowser) args.push("--cookies-from-browser", config.ytdlpCookiesFromBrowser);
+    else if (useCookies && config.ytdlpCookiesFromBrowser) {
+        args.push("--cookies-from-browser", config.ytdlpCookiesFromBrowser);
+    }
 
     if (outputType === "thumbnail" || outputType === "image") {
         args.push("--skip-download", "--write-thumbnail", "--convert-thumbnails", "jpg");
