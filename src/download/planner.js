@@ -114,6 +114,8 @@ export function planEngines(rawUrl, outputType, settings = config) {
         names = ["reddit-embed", "reddit-proxy", "gallery-dl", "yt-dlp", "cobalt", "page-metadata"];
     } else if (source.reddit) {
         names = ["cobalt", "yt-dlp", "reddit-embed", "reddit-proxy", "gallery-dl", "page-metadata"];
+    } else if (source.instagram && settings.instagramProxyFirst && ["auto", "video"].includes(outputType)) {
+        names = ["instagram-proxy", "yt-dlp", "cobalt", "gallery-dl", "page-metadata"];
     } else if (source.instagram && ["auto", "image", "thumbnail"].includes(outputType)) {
         names = ["gallery-dl", "yt-dlp", "instagram-proxy", "cobalt", "page-metadata"];
     } else if (source.instagram) {

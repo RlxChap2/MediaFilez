@@ -232,6 +232,7 @@ Start with `.env.example`. Size values accept `b`, `kb`, `kib`, `mb`, `mib`, `gb
 | `PAGE_METADATA_ENABLED`      | `true`                 | Enables generic page metadata extraction                                                           |
 | `PAGE_METADATA_MAX_SIZE`     | `1mb`                  | Maximum HTML read by the metadata engine                                                           |
 | `INSTAGRAM_PROXY_HOSTS`      | `www.kkkinstagram.com` | Ordered Instagram relay hosts; use `none` to disable                                               |
+| `INSTAGRAM_PROXY_FIRST`      | `false`                | Try the configured relay before other engines for Instagram video/auto; the relay receives the URL |
 | `REDDIT_PROXY_HOSTS`         | `redditez.com`         | Ordered Reddit embed relay hosts; use `none` to disable                                            |
 | `DISABLED_ENGINES`           | empty                  | Engine names removed from every plan                                                               |
 

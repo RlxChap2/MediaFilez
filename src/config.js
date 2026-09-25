@@ -90,6 +90,7 @@ export const config = {
         process.env.INSTAGRAM_PROXY_HOSTS === undefined
             ? ["www.kkkinstagram.com"]
             : parseList(process.env.INSTAGRAM_PROXY_HOSTS),
+    instagramProxyFirst: parseBoolean(process.env.INSTAGRAM_PROXY_FIRST, false),
     redditProxyHosts:
         process.env.REDDIT_PROXY_HOSTS === undefined ? ["redditez.com"] : parseList(process.env.REDDIT_PROXY_HOSTS),
     disabledEngines: new Set(parseList(process.env.DISABLED_ENGINES).map((item) => item.toLowerCase())),
