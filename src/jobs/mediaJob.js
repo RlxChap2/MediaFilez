@@ -9,6 +9,7 @@ import { log } from "../utils/logger.js";
 import { downloadMedia } from "../download/orchestrator.js";
 import { prepareMediaForDiscord } from "../media/processor.js";
 import { ReplySession } from "../platform/discord/replySession.js";
+import { downloadWithMediaApi, mediaApiEnabled } from "../integrations/mediaApi.js";
 
 const queue = new PQueue({ concurrency: config.maxConcurrentJobs });
 const activeByUser = new Map();
@@ -95,7 +96,8 @@ async function runMediaJob(interaction, reply, request, options = {}) {
           )
         : null;
     const signal = AbortSignal.any([deadlineSignal, tempOwnershipSignal]);
-    const executeDownload = options.downloadMedia ?? downloadMedia;
+    const useMediaApi = mediaApiEnabled() && !options.downloadMedia;
+    const executeDownload = options.downloadMedia ?? (useMediaApi ? downloadWithMediaApi : downloadMedia);
     const uploadTargetBytes = uploadTargetBytesForInteraction(interaction);
     let tempDir;
 
@@ -106,21 +108,32 @@ async function runMediaJob(interaction, reply, request, options = {}) {
             outputType: request.outputType,
             maxBytes: config.maxDownloadBytes,
             targetBytes: uploadTargetBytes,
+            allowCompression: request.fitToLimit,
+            timeoutMs: config.jobTimeoutMs,
+            idempotencyKey: interaction.id,
             signal,
             onStatus: (status) => reply.update(status),
         });
         const downloadMs = performance.now() - downloadStarted;
 
         const processStarted = performance.now();
-        const output = await prepareMediaForDiscord(download, {
-            outputType: request.outputType,
-            tempDir,
-            maxAttachmentBytes: uploadTargetBytes,
-            allowCompression: request.fitToLimit,
-            signal,
-            onStatus: (status) => reply.update(status),
-        });
-        const processMs = performance.now() - processStarted;
+        const output = useMediaApi
+            ? download
+            : await prepareMediaForDiscord(download, {
+                  outputType: request.outputType,
+                  tempDir,
+                  maxAttachmentBytes: uploadTargetBytes,
+                  allowCompression: request.fitToLimit,
+                  signal,
+                  onStatus: (status) => reply.update(status),
+              });
+        const processMs = download.remoteProcessingMs ?? performance.now() - processStarted;
+        if (output.sizeBytes > uploadTargetBytes) {
+            throw userError(
+                `The prepared file is ${formatBytes(output.sizeBytes)}, above the ${formatBytes(uploadTargetBytes)} upload target.`,
+                "FILE_TOO_LARGE",
+            );
+        }
         log.info(
             `Prepared ${output.fileName} (${formatBytes(output.sizeBytes)}; ${output.sizeBytes} bytes) in ${formatElapsed(processMs)}. Upload target: ${uploadTargetBytes} bytes.`,
         );
