@@ -1,6 +1,6 @@
 # MediaFilez
 
-MediaFilez downloads public media into Discord through one `/media` command. It tries ordered engines, validates every result, fits oversized video, audio, or images to the current interaction limit, and streams one confirmed attachment without buffering the whole file in memory.
+MediaFilez downloads public media through one `/media` command. It tries ordered engines and validates every result. With a public R2 CDN configured, server replies link the original file; private replies and local mode fit oversized media to Discord's upload limit and stream the attachment with bounded memory.
 
 ## Command
 
@@ -10,7 +10,7 @@ MediaFilez downloads public media into Discord through one `/media` command. It 
 | -------------- | -------- | ------- | ---------------------------------------------------------------- |
 | `url`          | yes      | none    | Public media page or direct media URL                            |
 | `output`       | yes      | none    | `auto`, `video`, `image`, or `audio`                             |
-| `fit_to_limit` | no       | `true`  | Process oversized media to fit the current Discord limit         |
+| `fit_to_limit` | no       | `true`  | Process oversized attachments to fit the Discord limit           |
 | `private`      | no       | `false` | Make progress and the final result visible only to the requester |
 
 Each output value changes validation and processing:
@@ -28,9 +28,9 @@ Private results use Discord's ephemeral interaction reply, so they do not depend
 
 ## Discord reply
 
-The original interaction shows queue position, the active engine, transfer progress when an engine reports it, and the processing or upload stage. A successful reply contains the attachment, its final size, and a `Nerd Info` button.
+The original interaction shows queue position, transfer progress when available, and the processing or delivery stage. A successful reply contains either an attachment or a public CDN link, its final size, and a `Nerd Info` button.
 
-`Nerd Info` opens an ephemeral message with the filename, selected engine, download time, processing time, upload target, final size, and any processing or recovery note. Its small payload lives in the button ID, so the button still works after a bot restart. It does not contain the source URL, cookies, or credentials.
+`Nerd Info` opens an ephemeral message with the filename, selected engine, download time, processing time, delivery mode, final size, and any processing or recovery note. Its small payload lives in the button ID, so the button still works after a bot restart. It does not contain the source URL, cookies, or credentials.
 
 ## What changed in 2.1
 
@@ -114,7 +114,7 @@ pm2 start ecosystem.config.cjs
 
 ### Remote API and Worker
 
-Set `MEDIA_API_URL` and `MEDIA_API_KEY` when the bot should submit jobs to the MediaFilez API. The API enqueues the versioned job for `media-worker`; the bot polls the job, downloads the completed object through the API's signed file URL, and uploads that final artifact to Discord. Leave both values empty to use the local downloader during development.
+Set `MEDIA_API_URL` and `MEDIA_API_KEY` when the bot should submit jobs to the MediaFilez API. The API enqueues the versioned job for `media-worker`. The bot follows job events and falls back to status polling if the stream disconnects. With `MEDIA_CDN_BASE_URL` set, public server replies share the original media from a dedicated public R2 bucket without fitting it to Discord's upload limit. Private replies and DMs still use signed downloads and Discord attachments. Leave the API values empty to use the local downloader during development.
 
 ```env
 MEDIA_API_URL=https://api.example.com
@@ -122,11 +122,14 @@ MEDIA_API_KEY=mf_your_api_key
 MEDIA_API_REQUEST_TIMEOUT_MS=45000
 MEDIA_API_RETRIES=2
 MEDIA_API_RETRY_DELAY_MS=500
-MEDIA_API_POLL_INTERVAL_MS=500
+MEDIA_API_POLL_INTERVAL_MS=2000
 MEDIA_API_MAX_DOWNLOAD_SIZE=5gb
+MEDIA_CDN_BASE_URL=https://cdn.example.com
 ```
 
 The bot retries transient API failures (including gateway and server errors) with a short exponential backoff. Set `MEDIA_API_RETRIES=0` to disable retries, or adjust `MEDIA_API_RETRY_DELAY_MS` for a different starting delay. Permanent client errors are returned immediately.
+
+The CDN option requires the API's `R2_PUBLIC_BASE_URL` and the Worker's `R2_PUBLIC_BUCKET` to point to the same public R2 bucket. The public link is visible to anyone who can read or forward the message. `fit_to_limit` applies to attachment delivery; public CDN replies keep the source quality. Discord may show an inline preview when the file format is playable and the channel grants **Embed Links** permission. Otherwise the direct download link remains usable.
 
 The bot also publishes its application ID, user ID, and guild IDs to `POST /api/v1/internal/discord/presence` when Discord reports it ready. The API keeps the latest snapshot in memory and exposes authenticated `GET /api/v1/discord/presence` and `/events` endpoints. Guild names, members, and message content are not sent.
 
@@ -221,15 +224,16 @@ Start with `.env.example`. Size values accept `b`, `kb`, `kib`, `mb`, `mib`, `gb
 
 ### Remote execution
 
-| Variable                       | Default | Purpose                                                                 |
-| ------------------------------ | ------- | ----------------------------------------------------------------------- |
-| `MEDIA_API_URL`                | empty   | API base URL; enables API/Worker jobs when paired with an API key       |
-| `MEDIA_API_KEY`                | empty   | API key used for job creation, polling, file delivery, and presence     |
-| `MEDIA_API_REQUEST_TIMEOUT_MS` | `45000` | Timeout for one API request                                             |
-| `MEDIA_API_RETRIES`            | `2`     | Retries for transient API/network failures                              |
-| `MEDIA_API_RETRY_DELAY_MS`     | `500`   | Initial delay for API retries; later attempts use exponential backoff   |
-| `MEDIA_API_POLL_INTERVAL_MS`   | `500`   | Delay between job status checks                                         |
-| `MEDIA_API_MAX_DOWNLOAD_SIZE`  | `5gb`   | Source limit sent to the API; final Discord output still uses its limit |
+| Variable                       | Default | Purpose                                                               |
+| ------------------------------ | ------- | --------------------------------------------------------------------- |
+| `MEDIA_API_URL`                | empty   | API base URL; enables API/Worker jobs when paired with an API key     |
+| `MEDIA_API_KEY`                | empty   | API key used for job creation, polling, file delivery, and presence   |
+| `MEDIA_API_REQUEST_TIMEOUT_MS` | `45000` | Timeout for one API request                                           |
+| `MEDIA_API_RETRIES`            | `2`     | Retries for transient API/network failures                            |
+| `MEDIA_API_RETRY_DELAY_MS`     | `500`   | Initial delay for API retries; later attempts use exponential backoff |
+| `MEDIA_API_POLL_INTERVAL_MS`   | `2000`  | Delay between fallback job status checks                              |
+| `MEDIA_API_MAX_DOWNLOAD_SIZE`  | `5gb`   | Source limit sent to the API                                          |
+| `MEDIA_CDN_BASE_URL`           | empty   | Trusted public R2 domain for original-quality server replies          |
 
 ### Timeouts
 
