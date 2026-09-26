@@ -112,6 +112,24 @@ The included PM2 file runs `prod:start`, which publishes the current command def
 pm2 start ecosystem.config.cjs
 ```
 
+### Remote API and Worker
+
+Set `MEDIA_API_URL` and `MEDIA_API_KEY` when the bot should submit jobs to the MediaFilez API. The API enqueues the versioned job for `media-worker`; the bot polls the job, downloads the completed object through the API's signed file URL, and uploads that final artifact to Discord. Leave both values empty to use the local downloader during development.
+
+```env
+MEDIA_API_URL=https://api.example.com
+MEDIA_API_KEY=mf_your_api_key
+MEDIA_API_REQUEST_TIMEOUT_MS=45000
+MEDIA_API_RETRIES=2
+MEDIA_API_RETRY_DELAY_MS=500
+MEDIA_API_POLL_INTERVAL_MS=500
+MEDIA_API_MAX_DOWNLOAD_SIZE=5gb
+```
+
+The bot retries transient API failures (including gateway and server errors) with a short exponential backoff. Set `MEDIA_API_RETRIES=0` to disable retries, or adjust `MEDIA_API_RETRY_DELAY_MS` for a different starting delay. Permanent client errors are returned immediately.
+
+The bot also publishes its application ID, user ID, and guild IDs to `POST /api/v1/internal/discord/presence` when Discord reports it ready. The API keeps the latest snapshot in memory and exposes authenticated `GET /api/v1/discord/presence` and `/events` endpoints. Guild names, members, and message content are not sent.
+
 Useful diagnostics:
 
 ```bash
@@ -201,6 +219,18 @@ Start with `.env.example`. Size values accept `b`, `kb`, `kib`, `mb`, `mib`, `gb
 | `DISCORD_UPLOAD_RETRY_DELAY_MS` | `1500`   | Base delay between verified upload retries               |
 | `STATUS_UPDATE_INTERVAL_MS`     | `2500`   | Minimum delay between progress-message edits             |
 
+### Remote execution
+
+| Variable                       | Default | Purpose                                                                 |
+| ------------------------------ | ------- | ----------------------------------------------------------------------- |
+| `MEDIA_API_URL`                | empty   | API base URL; enables API/Worker jobs when paired with an API key       |
+| `MEDIA_API_KEY`                | empty   | API key used for job creation, polling, file delivery, and presence     |
+| `MEDIA_API_REQUEST_TIMEOUT_MS` | `45000` | Timeout for one API request                                             |
+| `MEDIA_API_RETRIES`            | `2`     | Retries for transient API/network failures                              |
+| `MEDIA_API_RETRY_DELAY_MS`     | `500`   | Initial delay for API retries; later attempts use exponential backoff   |
+| `MEDIA_API_POLL_INTERVAL_MS`   | `500`   | Delay between job status checks                                         |
+| `MEDIA_API_MAX_DOWNLOAD_SIZE`  | `5gb`   | Source limit sent to the API; final Discord output still uses its limit |
+
 ### Timeouts
 
 | Variable                   | Default  | Purpose                                     |
@@ -226,7 +256,7 @@ Start with `.env.example`. Size values accept `b`, `kb`, `kib`, `mb`, `mib`, `gb
 | `FFMPEG_PATH`                | automatic              | Operator-managed FFmpeg executable                                                                 |
 | `FFPROBE_PATH`               | automatic              | Operator-managed FFprobe executable                                                                |
 | `FFMPEG_THREADS`             | `2`                    | Encoder threads per fitting job                                                                    |
-| `YOUTUBE_JS_ENABLED`         | `true`                 | Enables the YouTube.js fallback                                                                    |
+| `YOUTUBE_JS_ENABLED`         | `false`                | Enables the YouTube.js fallback when an evaluator is configured                                    |
 | `GALLERY_DL_ENABLED`         | `true`                 | Enables gallery and image extraction                                                               |
 | `GALLERY_DL_PATH`            | automatic              | Operator-managed gallery-dl executable                                                             |
 | `PAGE_METADATA_ENABLED`      | `true`                 | Enables generic page metadata extraction                                                           |
