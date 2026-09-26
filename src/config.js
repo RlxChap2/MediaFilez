@@ -81,7 +81,9 @@ export const config = {
     ffmpegPath: process.env.FFMPEG_PATH || null,
     ffprobePath: process.env.FFPROBE_PATH || null,
     ffmpegThreads: parseInteger(process.env.FFMPEG_THREADS, 2, 1, 8),
-    youtubeJsEnabled: parseBoolean(process.env.YOUTUBE_JS_ENABLED, true),
+    // youtubei.js requires an explicit JavaScript evaluator; leave this
+    // disabled until one is configured so failed fallbacks stay fast.
+    youtubeJsEnabled: parseBoolean(process.env.YOUTUBE_JS_ENABLED, false),
     galleryDlEnabled: parseBoolean(process.env.GALLERY_DL_ENABLED, true),
     galleryDlPath: process.env.GALLERY_DL_PATH || null,
     pageMetadataEnabled: parseBoolean(process.env.PAGE_METADATA_ENABLED, true),
@@ -110,7 +112,7 @@ export const config = {
             .replace(/\/$/, "") || null,
     mediaApiKey: String(process.env.MEDIA_API_KEY || "").trim() || null,
     mediaApiRequestTimeoutMs: parseInteger(process.env.MEDIA_API_REQUEST_TIMEOUT_MS, 45_000, 5_000, 5 * 60_000),
-    mediaApiPollIntervalMs: parseInteger(process.env.MEDIA_API_POLL_INTERVAL_MS, 1_000, 500, 10_000),
+    mediaApiPollIntervalMs: parseInteger(process.env.MEDIA_API_POLL_INTERVAL_MS, 500, 500, 10_000),
     mediaApiMaxDownloadBytes: parseSize(process.env.MEDIA_API_MAX_DOWNLOAD_SIZE, 5 * 1024 ** 3, 5 * 1024 ** 3),
 };
 
