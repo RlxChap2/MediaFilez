@@ -20,31 +20,59 @@ function remoteError(response, body) {
     return userError(message, body?.error?.code || "MEDIA_API_ERROR", { cause: body });
 }
 
+function retryableStatus(status) {
+    return status === 408 || status === 425 || status === 429 || status >= 500;
+}
+
+function retryableNetworkError(error) {
+    return (
+        error?.name === "AbortError" ||
+        error?.name === "TimeoutError" ||
+        ["ECONNRESET", "ETIMEDOUT", "UND_ERR_SOCKET", "UND_ERR_CONNECT_TIMEOUT"].includes(error?.code)
+    );
+}
+
+async function waitForRetry(attempt, signal) {
+    await sleep(config.mediaApiRetryDelayMs * 2 ** attempt, undefined, signal ? { signal } : undefined);
+}
+
 async function request(pathname, options = {}) {
     if (!config.mediaApiKey) throw userError("The Media API key is not configured.", "MEDIA_API_NOT_CONFIGURED");
-    const timeout = AbortSignal.timeout(config.mediaApiRequestTimeoutMs);
-    const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
-    let response;
-    try {
-        response = await fetch(endpoint(pathname), {
-            ...options,
-            signal,
-            headers: {
-                accept: "application/json",
-                authorization: `ApiKey ${config.mediaApiKey}`,
-                ...(options.body ? { "content-type": "application/json" } : {}),
-                ...options.headers,
-            },
-        });
-    } catch (error) {
-        if (options.signal?.aborted) throw options.signal.reason ?? error;
-        throw userError("The Media API could not be reached. Try again shortly.", "MEDIA_API_UNAVAILABLE", {
-            cause: error,
-        });
+    let lastNetworkError;
+    for (let attempt = 0; attempt <= config.mediaApiRetries; attempt += 1) {
+        const timeout = AbortSignal.timeout(config.mediaApiRequestTimeoutMs);
+        const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
+        let response;
+        try {
+            response = await fetch(endpoint(pathname), {
+                ...options,
+                signal,
+                headers: {
+                    accept: "application/json",
+                    authorization: `ApiKey ${config.mediaApiKey}`,
+                    ...(options.body ? { "content-type": "application/json" } : {}),
+                    ...options.headers,
+                },
+            });
+        } catch (error) {
+            if (options.signal?.aborted) throw options.signal.reason ?? error;
+            lastNetworkError = error;
+            if (!retryableNetworkError(error) || attempt >= config.mediaApiRetries) {
+                throw userError("The Media API could not be reached. Try again shortly.", "MEDIA_API_UNAVAILABLE", {
+                    cause: error,
+                });
+            }
+            await waitForRetry(attempt, options.signal);
+            continue;
+        }
+        const body = await response.json().catch(() => null);
+        if (response.ok) return body;
+        if (!retryableStatus(response.status) || attempt >= config.mediaApiRetries) throw remoteError(response, body);
+        await waitForRetry(attempt, options.signal);
     }
-    const body = await response.json().catch(() => null);
-    if (!response.ok) throw remoteError(response, body);
-    return body;
+    throw userError("The Media API could not be reached. Try again shortly.", "MEDIA_API_UNAVAILABLE", {
+        cause: lastNetworkError,
+    });
 }
 
 function phaseForJob(job) {

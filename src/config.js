@@ -112,6 +112,8 @@ export const config = {
             .replace(/\/$/, "") || null,
     mediaApiKey: String(process.env.MEDIA_API_KEY || "").trim() || null,
     mediaApiRequestTimeoutMs: parseInteger(process.env.MEDIA_API_REQUEST_TIMEOUT_MS, 45_000, 5_000, 5 * 60_000),
+    mediaApiRetries: parseInteger(process.env.MEDIA_API_RETRIES, 2, 0, 5),
+    mediaApiRetryDelayMs: parseInteger(process.env.MEDIA_API_RETRY_DELAY_MS, 500, 100, 10_000),
     mediaApiPollIntervalMs: parseInteger(process.env.MEDIA_API_POLL_INTERVAL_MS, 500, 500, 10_000),
     mediaApiMaxDownloadBytes: parseSize(process.env.MEDIA_API_MAX_DOWNLOAD_SIZE, 5 * 1024 ** 3, 5 * 1024 ** 3),
 };
