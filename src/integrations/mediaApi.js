@@ -39,9 +39,11 @@ async function waitForRetry(attempt, signal) {
 async function request(pathname, options = {}) {
     if (!config.mediaApiKey) throw userError("The Media API key is not configured.", "MEDIA_API_NOT_CONFIGURED");
     let lastNetworkError;
+
     for (let attempt = 0; attempt <= config.mediaApiRetries; attempt += 1) {
         const timeout = AbortSignal.timeout(config.mediaApiRequestTimeoutMs);
         const signal = options.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
+
         let response;
         try {
             response = await fetch(endpoint(pathname), {
@@ -65,6 +67,7 @@ async function request(pathname, options = {}) {
             await waitForRetry(attempt, options.signal);
             continue;
         }
+
         const body = await response.json().catch(() => null);
         if (response.ok) return body;
         if (!retryableStatus(response.status) || attempt >= config.mediaApiRetries) throw remoteError(response, body);
@@ -96,9 +99,11 @@ export async function downloadWithMediaApi(url, tempDir, options = {}) {
                 : undefined,
         }),
     });
+
     let job = created?.job;
     if (!job?.id) throw userError("The Media API did not return a job.", "MEDIA_API_INVALID_RESPONSE");
     const deadline = Date.now() + (options.timeoutMs ?? config.jobTimeoutMs);
+
     while (!job || !["completed", "failed", "cancelled", "expired"].includes(job.status)) {
         options.onStatus?.({ phase: phaseForJob(job), progress: { percent: job.progress ?? 0 } });
         const remaining = deadline - Date.now();
@@ -107,19 +112,23 @@ export async function downloadWithMediaApi(url, tempDir, options = {}) {
         job = (await request(`/jobs/${encodeURIComponent(job.id)}`, { signal: options.signal }))?.job;
         if (!job) throw userError("The Media API returned an empty job status.", "MEDIA_API_INVALID_RESPONSE");
     }
+
     if (job.status !== "completed") {
         throw userError(
             job.error?.message || "The Worker could not complete the media job.",
             job.error?.code || "WORKER_FAILED",
         );
     }
+
     options.onStatus?.({ phase: "uploading", progress: { percent: 100 } });
     const fileId = job.result?.fileId;
+
     if (typeof fileId !== "string")
         throw userError("The completed job did not include a downloadable file.", "MEDIA_API_INVALID_RESPONSE");
     const file = (await request(`/files/${encodeURIComponent(fileId)}`, { signal: options.signal }))?.file;
     if (!file?.url || !file.fileName)
         throw userError("The Media API did not return a valid file URL.", "MEDIA_API_INVALID_RESPONSE");
+
     const signedUrl = new URL(file.url);
     const artifact = await downloadDirectHttp(file.url, tempDir, {
         signal: options.signal,
@@ -128,10 +137,12 @@ export async function downloadWithMediaApi(url, tempDir, options = {}) {
         trustedHosts: [signedUrl.hostname],
         methodLabel: "media-api-worker",
     });
+
     const remoteProcessingMs =
         job.startedAt && job.completedAt
             ? Math.max(0, new Date(job.completedAt).getTime() - new Date(job.startedAt).getTime())
             : 0;
+
     return {
         ...artifact,
         method: "media-api-worker",
