@@ -395,6 +395,34 @@ test("does not misreport a generic HTTP 403 as missing account cookies", async (
     );
 });
 
+test("keeps authentication details out of user-facing failures", async (t) => {
+    const jobDir = await tempJob();
+    t.after(() => fs.rm(jobDir, { recursive: true, force: true }));
+
+    await assert.rejects(
+        downloadMedia("https://example.com/private-post", jobDir, {
+            outputType: "video",
+            plan: ["instagram"],
+            engines: new Map([
+                [
+                    "instagram",
+                    async () => {
+                        throw new Error("account authentication required; cookies missing");
+                    },
+                ],
+            ]),
+        }),
+        (error) => {
+            assert.equal(
+                error.message,
+                "Could not retrieve media from this source. Try another link or try again later.",
+            );
+            assert.doesNotMatch(error.message, /cookies|MEDIA_COOKIES_FILE|authenticated session/i);
+            return true;
+        },
+    );
+});
+
 test("replaces verbose network block pages with a bounded engine error", async (t) => {
     const jobDir = await tempJob();
     t.after(() => fs.rm(jobDir, { recursive: true, force: true }));
