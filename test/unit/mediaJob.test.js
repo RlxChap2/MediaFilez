@@ -35,15 +35,15 @@ function guildInteraction(permissions, { thread = false, guildInstall = true } =
     };
 }
 
-test("requires only the permissions used for a public guild upload", () => {
+test("requires only the permissions used for a public CDN link", () => {
     const interaction = guildInteraction([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages]);
 
-    assert.deepEqual(missingGuildDeliveryPermissions(interaction, true), ["Attach Files"]);
+    assert.deepEqual(missingGuildDeliveryPermissions(interaction, true), ["Embed Links"]);
 });
 
 test("requires thread send permission only inside a thread", () => {
     const interaction = guildInteraction(
-        [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles],
+        [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks],
         { thread: true },
     );
 

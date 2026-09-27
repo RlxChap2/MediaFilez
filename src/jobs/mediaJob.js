@@ -22,11 +22,7 @@ function missingGuildDeliveryPermissions(interaction, publicRepliesInGuilds = co
     if (!interaction.authorizingIntegrationOwners?.guildId) return [];
 
     const required = [...PUBLIC_DELIVERY_PERMISSIONS];
-    required.push(
-        config.mediaCdnBaseUrl && mediaApiEnabled()
-            ? [PermissionFlagsBits.EmbedLinks, "Embed Links"]
-            : [PermissionFlagsBits.AttachFiles, "Attach Files"],
-    );
+    required.push([PermissionFlagsBits.EmbedLinks, "Embed Links"]);
     if (interaction.channel?.isThread()) {
         required.push([PermissionFlagsBits.SendMessagesInThreads, "Send Messages in Threads"]);
     }
