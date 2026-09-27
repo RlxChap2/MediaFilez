@@ -73,6 +73,53 @@ test("keeps the media reply compact and adds a Nerd Info button", async (t) => {
     assert.match(edits[0].components[0].components[0].custom_id, /^media-nerd:v1:yt-dlp\./);
 });
 
+test("shares a public media URL without uploading an attachment", async () => {
+    const edits = [];
+    const reply = new ReplySession({ editReply: async (payload) => edits.push(payload) });
+    await reply.commit(
+        { remoteUrl: "https://cdn.example.test/clip.mp4", fileName: "clip.mp4", sizeBytes: 50_000_000 },
+        details,
+    );
+    assert.equal(reply.state, "committed");
+    assert.equal(edits.length, 1);
+    assert.match(edits[0].content, /^https:\/\/cdn\.example\.test\/clip\.mp4\n/);
+    assert.equal(edits[0].files, undefined);
+    assert.equal(edits[0].components[0].components[0].label, "Nerd Info");
+});
+
+test("keeps a CDN reply when Discord accepted the edit but the connection failed", async () => {
+    const remoteUrl = "https://cdn.example.test/clip.mp4";
+    const interaction = {
+        editReply: async () => {
+            throw new Error("connection closed");
+        },
+        fetchReply: async () => ({ content: `${remoteUrl}\n-# 47.7 MB` }),
+    };
+    const reply = new ReplySession(interaction);
+    await reply.commit({ remoteUrl, fileName: "clip.mp4", sizeBytes: 50_000_000 }, details);
+    await reply.fail(new Error("late failure"));
+    assert.equal(reply.state, "committed");
+});
+
+test("does not overwrite an uncertain CDN reply with a failure", async () => {
+    const remoteUrl = "https://cdn.example.test/clip.mp4";
+    let edits = 0;
+    const interaction = {
+        editReply: async () => {
+            edits += 1;
+            throw new Error("connection closed");
+        },
+        fetchReply: async () => {
+            throw new Error("connection closed");
+        },
+    };
+    const reply = new ReplySession(interaction);
+    await assert.rejects(reply.commit({ remoteUrl, fileName: "clip.mp4", sizeBytes: 50_000_000 }, details));
+    await reply.fail(new Error("late failure"));
+    assert.equal(reply.state, "unknown");
+    assert.equal(edits, 1);
+});
+
 test("does not place page metadata in the public media reply", async (t) => {
     const output = await fixture(t);
     let sent;

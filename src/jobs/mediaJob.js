@@ -17,7 +17,6 @@ const activeByUser = new Map();
 const PUBLIC_DELIVERY_PERMISSIONS = [
     [PermissionFlagsBits.ViewChannel, "View Channel"],
     [PermissionFlagsBits.SendMessages, "Send Messages"],
-    [PermissionFlagsBits.AttachFiles, "Attach Files"],
 ];
 
 function missingGuildDeliveryPermissions(interaction, publicRepliesInGuilds = config.publicRepliesInGuilds) {
@@ -25,6 +24,11 @@ function missingGuildDeliveryPermissions(interaction, publicRepliesInGuilds = co
     if (!interaction.authorizingIntegrationOwners?.guildId) return [];
 
     const required = [...PUBLIC_DELIVERY_PERMISSIONS];
+    required.push(
+        config.mediaCdnBaseUrl && mediaApiEnabled()
+            ? [PermissionFlagsBits.EmbedLinks, "Embed Links"]
+            : [PermissionFlagsBits.AttachFiles, "Attach Files"],
+    );
     if (interaction.channel?.isThread()) {
         required.push([PermissionFlagsBits.SendMessagesInThreads, "Send Messages in Threads"]);
     }
@@ -99,6 +103,8 @@ async function runMediaJob(interaction, reply, request, options = {}) {
     const useMediaApi = mediaApiEnabled() && !options.downloadMedia;
     const executeDownload = options.downloadMedia ?? (useMediaApi ? downloadWithMediaApi : downloadMedia);
     const uploadTargetBytes = uploadTargetBytesForInteraction(interaction);
+    const publicDelivery =
+        useMediaApi && interaction.inGuild() && !request.privateReply && Boolean(config.mediaCdnBaseUrl);
     let tempDir;
 
     try {
@@ -108,6 +114,7 @@ async function runMediaJob(interaction, reply, request, options = {}) {
             outputType: request.outputType,
             maxBytes: config.maxDownloadBytes,
             targetBytes: uploadTargetBytes,
+            publicDelivery,
             allowCompression: request.fitToLimit,
             timeoutMs: config.jobTimeoutMs,
             idempotencyKey: interaction.id,
@@ -128,7 +135,7 @@ async function runMediaJob(interaction, reply, request, options = {}) {
                   onStatus: (status) => reply.update(status),
               });
         const processMs = download.remoteProcessingMs ?? performance.now() - processStarted;
-        if (output.sizeBytes > uploadTargetBytes) {
+        if (!output.remoteUrl && output.sizeBytes > uploadTargetBytes) {
             throw userError(
                 `The prepared file is ${formatBytes(output.sizeBytes)}, above the ${formatBytes(uploadTargetBytes)} upload target.`,
                 "FILE_TOO_LARGE",
@@ -139,7 +146,12 @@ async function runMediaJob(interaction, reply, request, options = {}) {
         );
 
         await reply.update(
-            { phase: "uploading", detail: `Uploading ${formatBytes(output.sizeBytes)} to Discord` },
+            {
+                phase: "uploading",
+                detail: output.remoteUrl
+                    ? "Sharing the media"
+                    : `Uploading ${formatBytes(output.sizeBytes)} to Discord`,
+            },
             { force: true },
         );
         await reply.commit(
@@ -237,6 +249,7 @@ export async function handleMediaCommand(interaction) {
             url: interaction.options.getString("url", true),
             outputType,
             fitToLimit: interaction.options.getBoolean("fit_to_limit") ?? true,
+            privateReply,
         });
     } catch (error) {
         if (isUserFacingError(error)) log.warn(`Could not queue media job (${error.code}): ${error.message}`);
