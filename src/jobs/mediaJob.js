@@ -6,8 +6,6 @@ import { createRequestTempDir, cleanupTempDir, tempOwnershipSignal } from "../ut
 import { formatBytes, formatElapsed } from "../utils/format.js";
 import { isUserFacingError, userError } from "../utils/errors.js";
 import { log } from "../utils/logger.js";
-import { downloadMedia } from "../download/orchestrator.js";
-import { prepareMediaForDiscord } from "../media/processor.js";
 import { ReplySession } from "../platform/discord/replySession.js";
 import { downloadWithMediaApi, mediaApiEnabled } from "../integrations/mediaApi.js";
 
@@ -100,22 +98,23 @@ async function runMediaJob(interaction, reply, request, options = {}) {
           )
         : null;
     const signal = AbortSignal.any([deadlineSignal, tempOwnershipSignal]);
-    const useMediaApi = mediaApiEnabled() && !options.downloadMedia;
-    const executeDownload = options.downloadMedia ?? (useMediaApi ? downloadWithMediaApi : downloadMedia);
+    const useMediaApi = !options.downloadMedia;
+    const executeDownload = options.downloadMedia ?? downloadWithMediaApi;
     const uploadTargetBytes = uploadTargetBytesForInteraction(interaction);
-    const publicDelivery =
-        useMediaApi && interaction.inGuild() && !request.privateReply && Boolean(config.mediaCdnBaseUrl);
+    const publicDelivery = useMediaApi && !request.privateReply && Boolean(config.mediaCdnBaseUrl);
     let tempDir;
 
     try {
+        if (useMediaApi && !mediaApiEnabled())
+            throw userError("The media service is not configured. Try again later.", "MEDIA_API_NOT_CONFIGURED");
+        if (useMediaApi && !request.privateReply && !config.mediaCdnBaseUrl)
+            throw userError("Media delivery is temporarily unavailable. Try again later.", "CDN_NOT_CONFIGURED");
         tempDir = await createRequestTempDir();
         const downloadStarted = performance.now();
         const download = await executeDownload(request.url, tempDir, {
             outputType: request.outputType,
             maxBytes: config.maxDownloadBytes,
-            targetBytes: uploadTargetBytes,
             publicDelivery,
-            allowCompression: request.fitToLimit,
             timeoutMs: config.jobTimeoutMs,
             idempotencyKey: interaction.id,
             signal,
@@ -124,16 +123,7 @@ async function runMediaJob(interaction, reply, request, options = {}) {
         const downloadMs = performance.now() - downloadStarted;
 
         const processStarted = performance.now();
-        const output = useMediaApi
-            ? download
-            : await prepareMediaForDiscord(download, {
-                  outputType: request.outputType,
-                  tempDir,
-                  maxAttachmentBytes: uploadTargetBytes,
-                  allowCompression: request.fitToLimit,
-                  signal,
-                  onStatus: (status) => reply.update(status),
-              });
+        const output = download;
         const processMs = download.remoteProcessingMs ?? performance.now() - processStarted;
         if (!output.remoteUrl && output.sizeBytes > uploadTargetBytes) {
             throw userError(
@@ -248,7 +238,6 @@ export async function handleMediaCommand(interaction) {
         await enqueue(interaction, reply, {
             url: interaction.options.getString("url", true),
             outputType,
-            fitToLimit: interaction.options.getBoolean("fit_to_limit") ?? true,
             privateReply,
         });
     } catch (error) {
