@@ -178,7 +178,7 @@ test("shares a private signed R2 URL without downloading or fitting", async () =
                     fileName: "clip.mp4",
                     sizeBytes: 50_000_000,
                     delivery: "private",
-                    url: "https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com/private-bucket/clip.mp4?X-Amz-Signature=test",
+                    url: "https://mediafilez-prod.0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com/clip.mp4?X-Amz-Signature=test",
                 },
             });
         throw new Error("unexpected download request");

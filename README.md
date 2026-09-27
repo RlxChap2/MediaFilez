@@ -31,7 +31,7 @@ The original interaction shows queue position, transfer progress when available,
 
 `Nerd Info` opens an ephemeral message with the filename, selected engine, download time, processing time, delivery mode, final size, and any processing or recovery note. Its small payload lives in the button ID, so the button still works after a bot restart. It does not contain the source URL, cookies, or credentials.
 
-## What changed in 2.1
+## Earlier 2.1 changes
 
 - `/media` includes an `Auto` output that accepts validated video, audio, or image media and chooses the matching processing path.
 - Local installs include FFmpeg and FFprobe packages. `pnpm install` also fetches a SHA-256 verified gallery-dl build into `.tools` when no operator path is supplied.
@@ -42,9 +42,7 @@ The original interaction shows queue position, transfer progress when available,
 - Cobalt now covers its full documented host set in the planner and requests a target-aware video quality instead of always requesting the largest source.
 - External downloaders run only for recognized public platforms. Unknown pages and direct links stay inside the DNS-, redirect-, and byte-guarded HTTP engines, and gallery-dl enforces the byte ceiling during transfer.
 - The queue accepts four jobs by default and two jobs per user. Both values remain configurable.
-- Discord's `attachmentSizeLimit` is now the normal upload target. The old 7 MiB ceiling is gone.
-- Final Discord uploads use a bounded-memory multipart stream. Nitro-sized attachments no longer expand into several in-memory copies before delivery.
-- `fit_to_limit` now handles oversized audio and images as well as video. Audio is re-encoded to MP3; images step down JPEG quality and resolution only as far as needed.
+- Earlier bot versions used Discord's `attachmentSizeLimit`, bounded-memory uploads, and `fit_to_limit` for oversized media. Current `/media` delivery uses R2 links instead.
 - An engine-local timeout falls through to the next engine. Only the whole-job abort stops fallback.
 - yt-dlp receives a private writable cookie copy for each attempt, so the configured source can remain mounted read-only and concurrent jobs cannot rewrite one shared jar.
 - Process-lifetime ownership locks let startup remove abandoned MediaFilez temp directories without touching work owned by another running instance.
@@ -67,7 +65,7 @@ Engine order depends on the host and requested output.
 | Other Cobalt services    | Cobalt, yt-dlp, gallery-dl, page metadata                             |
 | Unknown page             | page metadata, direct HTTP                                            |
 
-Each engine writes into its own attempt directory. MediaFilez checks file signatures and FFprobe streams before committing a result. A fallback starts only after the prior attempt stops and leaves no valid file. A process error does not discard a complete file left behind.
+Each engine writes into its own attempt directory in the Worker. The Worker checks file signatures and FFprobe streams before committing a result. A fallback starts only after the prior attempt stops and leaves no valid file. A process error does not discard a complete file left behind.
 
 For `auto` and `video`, MediaFilez asks yt-dlp for an audio-bearing alternative when the first valid video is silent and yt-dlp remains in the plan. It uses the second result if validation passes. If that attempt fails, MediaFilez keeps the original silent video instead of turning a usable download into an error.
 

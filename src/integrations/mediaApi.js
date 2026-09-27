@@ -210,7 +210,7 @@ export async function downloadWithMediaApi(url, tempDir, options = {}) {
     if (
         file.delivery !== "private" ||
         signedUrl.protocol !== "https:" ||
-        !/^[a-f0-9]{32}\.r2\.cloudflarestorage\.com$/.test(signedUrl.hostname) ||
+        !/^[a-z0-9][a-z0-9-]*\.[a-f0-9]{32}\.r2\.cloudflarestorage\.com$/.test(signedUrl.hostname) ||
         !signedUrl.searchParams.has("X-Amz-Signature")
     ) {
         throw userError("The Media API did not return a trusted private media URL.", "MEDIA_API_INVALID_RESPONSE");
