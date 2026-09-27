@@ -127,3 +127,75 @@ test("receives a completed worker state through the event stream without repeate
         Object.assign(config, original);
     }
 });
+
+test("keeps stored worker authentication guidance out of Discord errors", async () => {
+    const originalFetch = globalThis.fetch;
+    const original = { mediaApiUrl: config.mediaApiUrl, mediaApiKey: config.mediaApiKey };
+    config.mediaApiUrl = "https://api.example.test";
+    config.mediaApiKey = "test-key";
+    globalThis.fetch = async () =>
+        Response.json({
+            job: {
+                id: "job_old",
+                status: "failed",
+                error: {
+                    code: "DOWNLOAD_FAILED",
+                    message:
+                        "This Instagram post needs an authenticated session. Export browser cookies to MEDIA_COOKIES_FILE.",
+                },
+            },
+        });
+    try {
+        await assert.rejects(downloadWithMediaApi("https://example.test/video", "C:\\temp"), (error) => {
+            assert.equal(
+                error.message,
+                "Could not retrieve media from this source. Try another link or try again later.",
+            );
+            return true;
+        });
+    } finally {
+        globalThis.fetch = originalFetch;
+        Object.assign(config, original);
+    }
+});
+
+test("shares a private signed R2 URL without downloading or fitting", async () => {
+    const originalFetch = globalThis.fetch;
+    const original = { mediaApiUrl: config.mediaApiUrl, mediaApiKey: config.mediaApiKey };
+    config.mediaApiUrl = "https://api.example.test";
+    config.mediaApiKey = "test-key";
+    const calls = [];
+    globalThis.fetch = async (url, options) => {
+        calls.push({ url, options });
+        if (calls.length === 1)
+            return Response.json(
+                { job: { id: "job_1", status: "completed", result: { fileId: "fil_1" } } },
+                { status: 202 },
+            );
+        if (calls.length === 2)
+            return Response.json({
+                file: {
+                    fileName: "clip.mp4",
+                    sizeBytes: 50_000_000,
+                    delivery: "private",
+                    url: "https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com/private-bucket/clip.mp4?X-Amz-Signature=test",
+                },
+            });
+        throw new Error("unexpected download request");
+    };
+    try {
+        const result = await downloadWithMediaApi("https://example.test/video", "C:\\temp", {
+            publicDelivery: false,
+            targetBytes: 20_000_000,
+        });
+        assert.match(result.remoteUrl, /X-Amz-Signature=test/);
+        assert.equal(calls.length, 2);
+        const request = JSON.parse(calls[0].options.body);
+        assert.equal(request.delivery, "private");
+        assert.equal(request.processing.fitToLimit, false);
+        assert.equal(request.limits.maxBytes, config.mediaApiMaxDownloadBytes);
+    } finally {
+        globalThis.fetch = originalFetch;
+        Object.assign(config, original);
+    }
+});

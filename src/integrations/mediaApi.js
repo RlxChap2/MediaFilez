@@ -1,7 +1,6 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { randomUUID } from "node:crypto";
 import { config } from "../config.js";
-import { downloadDirectHttp } from "../download/engines/directHttp.js";
 import { userError } from "../utils/errors.js";
 
 const PHASES = new Set(["queued", "resolving", "downloading", "processing", "uploading"]);
@@ -134,11 +133,10 @@ export async function downloadWithMediaApi(url, tempDir, options = {}) {
             delivery: options.publicDelivery ? "public" : "private",
             output: { type: options.outputType || "auto", format: "original", quality: "best" },
             processing: {
-                fitToLimit:
-                    !options.publicDelivery && Boolean(options.targetBytes && options.allowCompression !== false),
+                fitToLimit: false,
             },
             limits: {
-                maxBytes: options.publicDelivery ? config.mediaApiMaxDownloadBytes : options.targetBytes,
+                maxBytes: config.mediaApiMaxDownloadBytes,
                 maxDownloadBytes: config.mediaApiMaxDownloadBytes,
             },
         }),
@@ -166,8 +164,11 @@ export async function downloadWithMediaApi(url, tempDir, options = {}) {
     }
 
     if (job.status !== "completed") {
+        const failureMessage = job.error?.message || "The Worker could not complete the media job.";
         throw userError(
-            job.error?.message || "The Worker could not complete the media job.",
+            /authenticated session|MEDIA_COOKIES_FILE|browser cookies/i.test(failureMessage)
+                ? "Could not retrieve media from this source. Try another link or try again later."
+                : failureMessage,
             job.error?.code || "WORKER_FAILED",
         );
     }
@@ -206,13 +207,14 @@ export async function downloadWithMediaApi(url, tempDir, options = {}) {
     }
 
     const signedUrl = new URL(file.url);
-    const artifact = await downloadDirectHttp(file.url, tempDir, {
-        signal: options.signal,
-        preferredName: file.fileName,
-        maxBytes: options.targetBytes || config.maxDownloadBytes,
-        trustedHosts: [signedUrl.hostname],
-        methodLabel: "media-api-worker",
-    });
+    if (
+        file.delivery !== "private" ||
+        signedUrl.protocol !== "https:" ||
+        !/^[a-f0-9]{32}\.r2\.cloudflarestorage\.com$/.test(signedUrl.hostname) ||
+        !signedUrl.searchParams.has("X-Amz-Signature")
+    ) {
+        throw userError("The Media API did not return a trusted private media URL.", "MEDIA_API_INVALID_RESPONSE");
+    }
 
     const remoteProcessingMs =
         job.startedAt && job.completedAt
@@ -220,10 +222,13 @@ export async function downloadWithMediaApi(url, tempDir, options = {}) {
             : 0;
 
     return {
-        ...artifact,
+        fileName: file.fileName,
+        sizeBytes: file.sizeBytes,
+        remoteUrl: signedUrl.href,
+        privateLink: true,
         method: "media-api-worker",
         remoteProcessingMs,
-        metadata: { ...(artifact.metadata || {}), fileId },
+        metadata: { fileId },
     };
 }
 

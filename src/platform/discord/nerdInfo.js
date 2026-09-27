@@ -45,13 +45,14 @@ function encodeDetails(output, details) {
         NOTE_CODES.get(output.note) || "-",
         details.recovered ? "1" : "0",
         output.remoteUrl ? encodeInteger(output.sizeBytes) : "-",
+        output.privateLink ? "p" : "-",
     ];
     return `${CUSTOM_ID_PREFIX}${fields.join(".")}`;
 }
 
 function decodeDetails(customId) {
     const fields = customId.slice(CUSTOM_ID_PREFIX.length).split(".");
-    if (![6, 7].includes(fields.length) || !fields[0]) throw new Error("Invalid Nerd Info payload.");
+    if (![6, 7, 8].includes(fields.length) || !fields[0]) throw new Error("Invalid Nerd Info payload.");
     return {
         method: fields[0],
         downloadMs: decodeInteger(fields[1]) / 10,
@@ -60,6 +61,7 @@ function decodeDetails(customId) {
         note: NOTES_BY_CODE.get(fields[4]),
         recovered: fields[5] === "1",
         remoteSizeBytes: !fields[6] || fields[6] === "-" ? null : decodeInteger(fields[6]),
+        privateLink: fields[7] === "p",
     };
 }
 
@@ -77,7 +79,7 @@ function nerdInfoCopy(attachment, details) {
         `-# Engine: ${escapeMarkdown(details.method)}`,
         `-# Download: ${formatElapsed(details.downloadMs)} · Processing: ${formatElapsed(details.processMs)}`,
         details.remoteSizeBytes !== null
-            ? `-# Delivery: CDN link · Size: ${formatBytes(attachment.size)}`
+            ? `-# Delivery: ${details.privateLink ? "private link" : "CDN link"} · Size: ${formatBytes(attachment.size)}`
             : `-# Upload target: ${formatBytes(details.uploadTargetBytes)} · ${formatBytes(attachment.size)}`,
     ];
     if (details.note) lines.push(`-# Note: ${details.note}`);

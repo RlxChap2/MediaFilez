@@ -79,3 +79,20 @@ test("shows Nerd Info for a CDN link without an attachment", async () => {
     assert.match(sent.content, /47\.7 MB/);
     assert.match(sent.content, /Delivery: CDN link/);
 });
+
+test("labels a signed R2 result as a private link", async () => {
+    const url =
+        "https://0123456789abcdef0123456789abcdef.r2.cloudflarestorage.com/private/clip.mp4?X-Amz-Signature=test";
+    const components = createNerdInfoComponents(
+        { remoteUrl: url, privateLink: true, sizeBytes: 50_000_000 },
+        { method: "media-api-worker", downloadMs: 100, processMs: 20, uploadTargetBytes: 20_000_000 },
+    );
+    let sent;
+    await handleNerdInfoButton({
+        isButton: () => true,
+        customId: components[0].components[0].custom_id,
+        message: { content: `${url}\n-# 47.7 MB`, attachments: new Map() },
+        reply: async (value) => (sent = value),
+    });
+    assert.match(sent.content, /Delivery: private link/);
+});
