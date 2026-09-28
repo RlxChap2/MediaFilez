@@ -27,7 +27,9 @@ services:
         restart: unless-stopped
         init: true
         environment:
-            API_URL: http://cobalt:9000/
+            API_URL: ${COBALT_PUBLIC_API_URL:-http://cobalt:9000/}
+        ports:
+            - "127.0.0.1:${COBALT_HOST_PORT:-19000}:9000"
         expose:
             - "9000"
         security_opt:
@@ -44,7 +46,9 @@ services:
         restart: unless-stopped
         init: true
         environment:
-            API_URL: http://cobalt-community:9000/
+            API_URL: ${COBALT_COMMUNITY_PUBLIC_API_URL:-http://cobalt-community:9000/}
+        ports:
+            - "127.0.0.1:${COBALT_COMMUNITY_HOST_PORT:-19001}:9000"
         expose:
             - "9000"
         security_opt:
