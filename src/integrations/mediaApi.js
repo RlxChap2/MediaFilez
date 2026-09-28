@@ -84,6 +84,24 @@ function phaseForJob(job) {
     return PHASES.has(job.phase) ? job.phase : "processing";
 }
 
+function trustedThumbnailUrl(value, cdn) {
+    if (typeof value !== "string") return null;
+    try {
+        const thumbnail = new URL(value);
+        if (
+            thumbnail.protocol !== "https:" ||
+            thumbnail.origin !== cdn.origin ||
+            !thumbnail.pathname.startsWith(cdn.pathname) ||
+            !/\.jpe?g$/i.test(thumbnail.pathname)
+        ) {
+            return null;
+        }
+        return thumbnail.href;
+    } catch {
+        return null;
+    }
+}
+
 async function watchJobEvents(jobId, deadline, options) {
     const remaining = deadline - Date.now();
     if (remaining <= 0) throw userError("The Media API job timed out before the Worker finished.", "JOB_TIMEOUT");
@@ -193,10 +211,12 @@ export async function downloadWithMediaApi(url, tempDir, options = {}) {
         ) {
             throw userError("The Media API did not return a trusted public media URL.", "MEDIA_API_INVALID_RESPONSE");
         }
+        const thumbnailUrl = trustedThumbnailUrl(job.result?.thumbnailUrl, cdn);
         return {
             fileName: file.fileName,
             sizeBytes: file.sizeBytes,
             remoteUrl: publicUrl.href,
+            ...(thumbnailUrl ? { thumbnailUrl } : {}),
             method: "media-api-worker",
             remoteProcessingMs:
                 job.startedAt && job.completedAt

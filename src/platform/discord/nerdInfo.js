@@ -107,7 +107,10 @@ export async function handleNerdInfoButton(interaction) {
     if (!interaction.isButton?.() || !String(interaction.customId).startsWith(CUSTOM_ID_PREFIX)) return false;
 
     const details = decodeDetails(interaction.customId);
-    const remoteUrl = String(interaction.message?.content || "").match(/^https:\/\/\S+/)?.[0];
+    const content = String(interaction.message?.content || "");
+    const remoteUrl =
+        content.match(/\[(?:video|image|audio|file)\]\((https:\/\/[^\s)]+)\)/)?.[1] ||
+        content.match(/^https:\/\/\S+/)?.[0];
     const remoteName = remoteUrl
         ? decodeURIComponent(new URL(remoteUrl).pathname.split("/").pop() || "media").replace(
               /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-/i,

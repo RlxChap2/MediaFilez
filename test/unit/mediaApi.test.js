@@ -58,7 +58,13 @@ test("uses the public CDN URL without downloading or fitting the file", async ()
         calls.push({ url, options });
         if (calls.length === 1)
             return Response.json(
-                { job: { id: "job_1", status: "completed", result: { fileId: "fil_1" } } },
+                {
+                    job: {
+                        id: "job_1",
+                        status: "completed",
+                        result: { fileId: "fil_1", thumbnailUrl: "https://cdn.example.test/2026/thumbnail.jpg" },
+                    },
+                },
                 { status: 202 },
             );
         if (calls.length === 2)
@@ -79,6 +85,7 @@ test("uses the public CDN URL without downloading or fitting the file", async ()
             outputType: "auto",
         });
         assert.equal(result.remoteUrl, "https://cdn.example.test/2026/clip.mp4");
+        assert.equal(result.thumbnailUrl, "https://cdn.example.test/2026/thumbnail.jpg");
         assert.equal(result.sizeBytes, 50_000_000);
         assert.equal(calls.length, 2);
         const request = JSON.parse(calls[0].options.body);
