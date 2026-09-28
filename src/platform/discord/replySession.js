@@ -39,6 +39,23 @@ function deliveredCopy(output) {
     return `-# ${formatBytes(output.sizeBytes)}`;
 }
 
+function remoteLabel(output) {
+    const extension = output.fileName?.split(".").pop()?.toLowerCase();
+    return ["mp4", "mov", "mkv", "webm"].includes(extension)
+        ? "video"
+        : ["jpg", "jpeg", "png", "webp", "gif"].includes(extension)
+          ? "image"
+          : ["mp3", "m4a", "ogg", "wav"].includes(extension)
+            ? "audio"
+            : "file";
+}
+
+function remoteCopy(output) {
+    const label = remoteLabel(output);
+    const url = output.remoteUrl.replaceAll("(", "%28").replaceAll(")", "%29");
+    return `-# ${formatBytes(output.sizeBytes)} · [${label}](${url})`;
+}
+
 function hasExpectedAttachment(message, expected) {
     const attachments = message?.attachments;
     if (!attachments) return false;
@@ -166,9 +183,12 @@ export class ReplySession {
         this.state = "committing";
 
         if (output.remoteUrl) {
+            const content = remoteCopy(output);
+            const imageUrl = output.thumbnailUrl || (remoteLabel(output) === "image" ? output.remoteUrl : null);
             try {
                 await this.interaction.editReply({
-                    content: `${output.remoteUrl}\n${deliveredCopy(output)}`,
+                    content,
+                    embeds: imageUrl ? [{ image: { url: imageUrl } }] : [],
                     components: createNerdInfoComponents(output, details),
                     allowedMentions: { parse: [] },
                 });
@@ -177,7 +197,7 @@ export class ReplySession {
             } catch (error) {
                 try {
                     const message = await this.interaction.fetchReply();
-                    if (message?.content?.startsWith(`${output.remoteUrl}\n`)) {
+                    if (message?.content === content) {
                         this.state = "committed";
                         return;
                     }

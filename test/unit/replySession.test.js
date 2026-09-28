@@ -79,14 +79,31 @@ test("shares a public media URL without uploading an attachment", async () => {
     const edits = [];
     const reply = new ReplySession({ editReply: async (payload) => edits.push(payload) });
     await reply.commit(
-        { remoteUrl: "https://cdn.example.test/clip.mp4", fileName: "clip.mp4", sizeBytes: 50_000_000 },
+        {
+            remoteUrl: "https://cdn.example.test/clip.mp4",
+            thumbnailUrl: "https://cdn.example.test/thumbnail.jpg",
+            fileName: "clip.mp4",
+            sizeBytes: 50_000_000,
+        },
         details,
     );
     assert.equal(reply.state, "committed");
     assert.equal(edits.length, 1);
-    assert.match(edits[0].content, /^https:\/\/cdn\.example\.test\/clip\.mp4\n/);
+    assert.equal(edits[0].content, "-# 47.7 MB · [video](https://cdn.example.test/clip.mp4)");
+    assert.deepEqual(edits[0].embeds, [{ image: { url: "https://cdn.example.test/thumbnail.jpg" } }]);
     assert.equal(edits[0].files, undefined);
     assert.equal(edits[0].components[0].components[0].label, "Nerd Info");
+});
+
+test("shows a public image inline with its compact link", async () => {
+    const edits = [];
+    const reply = new ReplySession({ editReply: async (payload) => edits.push(payload) });
+    await reply.commit(
+        { remoteUrl: "https://cdn.example.test/photo.jpg", fileName: "photo.jpg", sizeBytes: 1024 },
+        details,
+    );
+    assert.equal(edits[0].content, "-# 1.0 KB · [image](https://cdn.example.test/photo.jpg)");
+    assert.deepEqual(edits[0].embeds, [{ image: { url: "https://cdn.example.test/photo.jpg" } }]);
 });
 
 test("keeps a CDN reply when Discord accepted the edit but the connection failed", async () => {
@@ -95,7 +112,7 @@ test("keeps a CDN reply when Discord accepted the edit but the connection failed
         editReply: async () => {
             throw new Error("connection closed");
         },
-        fetchReply: async () => ({ content: `${remoteUrl}\n-# 47.7 MB` }),
+        fetchReply: async () => ({ content: `-# 47.7 MB · [video](${remoteUrl})` }),
     };
     const reply = new ReplySession(interaction);
     await reply.commit({ remoteUrl, fileName: "clip.mp4", sizeBytes: 50_000_000 }, details);
