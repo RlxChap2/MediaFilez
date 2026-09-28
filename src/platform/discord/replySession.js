@@ -11,7 +11,7 @@ const PHASE_COPY = {
     resolving: "Finding the media",
     downloading: "Downloading the media",
     processing: "Preparing the media",
-    uploading: "Uploading to Discord",
+    uploading: "Publishing the media",
 };
 
 function progressText(progress) {

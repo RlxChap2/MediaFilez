@@ -105,7 +105,7 @@ async function runMediaJob(interaction, reply, request, options = {}) {
             throw userError("The media service is not configured. Try again later.", "MEDIA_API_NOT_CONFIGURED");
         if (useMediaApi && !request.privateReply && !config.mediaCdnBaseUrl)
             throw userError("Media delivery is temporarily unavailable. Try again later.", "CDN_NOT_CONFIGURED");
-        tempDir = await createRequestTempDir();
+        if (!useMediaApi) tempDir = await createRequestTempDir();
         const downloadStarted = performance.now();
         const download = await executeDownload(request.url, tempDir, {
             outputType: request.outputType,
@@ -128,7 +128,7 @@ async function runMediaJob(interaction, reply, request, options = {}) {
             );
         }
         log.info(
-            `Prepared ${output.fileName} (${formatBytes(output.sizeBytes)}; ${output.sizeBytes} bytes) in ${formatElapsed(processMs)}. Upload target: ${uploadTargetBytes} bytes.`,
+            `Prepared ${output.fileName} (${formatBytes(output.sizeBytes)}; ${output.sizeBytes} bytes) in ${formatElapsed(processMs)}${output.remoteUrl ? "." : `. Upload target: ${uploadTargetBytes} bytes.`}`,
         );
 
         await reply.update(

@@ -27,10 +27,12 @@ test("keeps progress updates clear without exposing the downloader engine", asyn
 
     await reply.update({ phase: "resolving", engine: "yt-dlp" });
     await reply.update({ phase: "downloading", engine: "gallery-dl", progress: { percent: 50 } });
+    await reply.update({ phase: "uploading", progress: { percent: 75 } });
 
     assert.equal(edits[0].content, "Finding the media...");
     assert.equal(edits[1].content, "Downloading the media | 50.0%...");
-    assert.doesNotMatch(`${edits[0].content} ${edits[1].content}`, /yt-dlp|gallery-dl/);
+    assert.equal(edits[2].content, "Publishing the media | 75.0%...");
+    assert.doesNotMatch(edits.map((edit) => edit.content).join(" "), /yt-dlp|gallery-dl|Uploading to Discord/);
 });
 
 test("commits once and never overwrites success with a later error", async (t) => {
