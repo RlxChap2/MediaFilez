@@ -44,15 +44,13 @@ function encodeDetails(output, details) {
         encodeInteger(details.uploadTargetBytes),
         NOTE_CODES.get(output.note) || "-",
         details.recovered ? "1" : "0",
-        output.remoteUrl ? encodeInteger(output.sizeBytes) : "-",
-        output.privateLink ? "p" : "-",
     ];
     return `${CUSTOM_ID_PREFIX}${fields.join(".")}`;
 }
 
 function decodeDetails(customId) {
     const fields = customId.slice(CUSTOM_ID_PREFIX.length).split(".");
-    if (![6, 7, 8].includes(fields.length) || !fields[0]) throw new Error("Invalid Nerd Info payload.");
+    if (fields.length !== 6 || !fields[0]) throw new Error("Invalid Nerd Info payload.");
     return {
         method: fields[0],
         downloadMs: decodeInteger(fields[1]) / 10,
@@ -60,8 +58,6 @@ function decodeDetails(customId) {
         uploadTargetBytes: decodeInteger(fields[3]),
         note: NOTES_BY_CODE.get(fields[4]),
         recovered: fields[5] === "1",
-        remoteSizeBytes: !fields[6] || fields[6] === "-" ? null : decodeInteger(fields[6]),
-        privateLink: fields[7] === "p",
     };
 }
 
@@ -78,9 +74,7 @@ function nerdInfoCopy(attachment, details) {
         `**Ready: ${escapeMarkdown(attachment.name || "attachment")}**`,
         `-# Engine: ${escapeMarkdown(details.method)}`,
         `-# Download: ${formatElapsed(details.downloadMs)} · Processing: ${formatElapsed(details.processMs)}`,
-        details.remoteSizeBytes !== null
-            ? `-# Delivery: ${details.privateLink ? "private link" : "CDN link"} · Size: ${formatBytes(attachment.size)}`
-            : `-# Upload target: ${formatBytes(details.uploadTargetBytes)} · ${formatBytes(attachment.size)}`,
+        `-# Upload target: ${formatBytes(details.uploadTargetBytes)} · ${formatBytes(attachment.size)}`,
     ];
     if (details.note) lines.push(`-# Note: ${details.note}`);
     if (details.recovered) lines.push("-# The downloader reported an error, but the delivered file was complete.");
@@ -106,17 +100,7 @@ export function createNerdInfoComponents(output, details) {
 export async function handleNerdInfoButton(interaction) {
     if (!interaction.isButton?.() || !String(interaction.customId).startsWith(CUSTOM_ID_PREFIX)) return false;
 
-    const details = decodeDetails(interaction.customId);
-    const remoteUrl = String(interaction.message?.content || "").match(/^https:\/\/\S+/)?.[0];
-    const remoteName = remoteUrl
-        ? decodeURIComponent(new URL(remoteUrl).pathname.split("/").pop() || "media").replace(
-              /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-/i,
-              "",
-          )
-        : "media";
-    const attachment =
-        firstAttachment(interaction.message) ||
-        (details.remoteSizeBytes !== null && remoteUrl ? { name: remoteName, size: details.remoteSizeBytes } : null);
+    const attachment = firstAttachment(interaction.message);
     if (!attachment) {
         await interaction.reply({
             content: "Nerd Info is unavailable because the media attachment is no longer present.",
@@ -125,6 +109,7 @@ export async function handleNerdInfoButton(interaction) {
         return true;
     }
 
+    const details = decodeDetails(interaction.customId);
     await interaction.reply({
         content: nerdInfoCopy(attachment, details),
         flags: MessageFlags.Ephemeral,

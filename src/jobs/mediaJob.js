@@ -6,8 +6,9 @@ import { createRequestTempDir, cleanupTempDir, tempOwnershipSignal } from "../ut
 import { formatBytes, formatElapsed } from "../utils/format.js";
 import { isUserFacingError, userError } from "../utils/errors.js";
 import { log } from "../utils/logger.js";
+import { downloadMedia } from "../download/orchestrator.js";
+import { prepareMediaForDiscord } from "../media/processor.js";
 import { ReplySession } from "../platform/discord/replySession.js";
-import { downloadWithMediaApi, mediaApiEnabled } from "../integrations/mediaApi.js";
 
 const queue = new PQueue({ concurrency: config.maxConcurrentJobs });
 const activeByUser = new Map();
@@ -15,6 +16,7 @@ const activeByUser = new Map();
 const PUBLIC_DELIVERY_PERMISSIONS = [
     [PermissionFlagsBits.ViewChannel, "View Channel"],
     [PermissionFlagsBits.SendMessages, "Send Messages"],
+    [PermissionFlagsBits.AttachFiles, "Attach Files"],
 ];
 
 function missingGuildDeliveryPermissions(interaction, publicRepliesInGuilds = config.publicRepliesInGuilds) {
@@ -22,7 +24,6 @@ function missingGuildDeliveryPermissions(interaction, publicRepliesInGuilds = co
     if (!interaction.authorizingIntegrationOwners?.guildId) return [];
 
     const required = [...PUBLIC_DELIVERY_PERMISSIONS];
-    required.push([PermissionFlagsBits.EmbedLinks, "Embed Links"]);
     if (interaction.channel?.isThread()) {
         required.push([PermissionFlagsBits.SendMessagesInThreads, "Send Messages in Threads"]);
     }
@@ -94,50 +95,38 @@ async function runMediaJob(interaction, reply, request, options = {}) {
           )
         : null;
     const signal = AbortSignal.any([deadlineSignal, tempOwnershipSignal]);
-    const useMediaApi = !options.downloadMedia;
-    const executeDownload = options.downloadMedia ?? downloadWithMediaApi;
+    const executeDownload = options.downloadMedia ?? downloadMedia;
     const uploadTargetBytes = uploadTargetBytesForInteraction(interaction);
-    const publicDelivery = useMediaApi && !request.privateReply && Boolean(config.mediaCdnBaseUrl);
     let tempDir;
 
     try {
-        if (useMediaApi && !mediaApiEnabled())
-            throw userError("The media service is not configured. Try again later.", "MEDIA_API_NOT_CONFIGURED");
-        if (useMediaApi && !request.privateReply && !config.mediaCdnBaseUrl)
-            throw userError("Media delivery is temporarily unavailable. Try again later.", "CDN_NOT_CONFIGURED");
-        if (!useMediaApi) tempDir = await createRequestTempDir();
+        tempDir = await createRequestTempDir();
         const downloadStarted = performance.now();
         const download = await executeDownload(request.url, tempDir, {
             outputType: request.outputType,
             maxBytes: config.maxDownloadBytes,
-            publicDelivery,
-            timeoutMs: config.jobTimeoutMs,
-            idempotencyKey: interaction.id,
+            targetBytes: uploadTargetBytes,
             signal,
             onStatus: (status) => reply.update(status),
         });
         const downloadMs = performance.now() - downloadStarted;
 
         const processStarted = performance.now();
-        const output = download;
-        const processMs = download.remoteProcessingMs ?? performance.now() - processStarted;
-        if (!output.remoteUrl && output.sizeBytes > uploadTargetBytes) {
-            throw userError(
-                `The prepared file is ${formatBytes(output.sizeBytes)}, above the ${formatBytes(uploadTargetBytes)} upload target.`,
-                "FILE_TOO_LARGE",
-            );
-        }
+        const output = await prepareMediaForDiscord(download, {
+            outputType: request.outputType,
+            tempDir,
+            maxAttachmentBytes: uploadTargetBytes,
+            allowCompression: request.fitToLimit,
+            signal,
+            onStatus: (status) => reply.update(status),
+        });
+        const processMs = performance.now() - processStarted;
         log.info(
-            `Prepared ${output.fileName} (${formatBytes(output.sizeBytes)}; ${output.sizeBytes} bytes) in ${formatElapsed(processMs)}${output.remoteUrl ? "." : `. Upload target: ${uploadTargetBytes} bytes.`}`,
+            `Prepared ${output.fileName} (${formatBytes(output.sizeBytes)}; ${output.sizeBytes} bytes) in ${formatElapsed(processMs)}. Upload target: ${uploadTargetBytes} bytes.`,
         );
 
         await reply.update(
-            {
-                phase: "uploading",
-                detail: output.remoteUrl
-                    ? "Sharing the media"
-                    : `Uploading ${formatBytes(output.sizeBytes)} to Discord`,
-            },
+            { phase: "uploading", detail: `Uploading ${formatBytes(output.sizeBytes)} to Discord` },
             { force: true },
         );
         await reply.commit(
@@ -234,7 +223,7 @@ export async function handleMediaCommand(interaction) {
         await enqueue(interaction, reply, {
             url: interaction.options.getString("url", true),
             outputType,
-            privateReply,
+            fitToLimit: interaction.options.getBoolean("fit_to_limit") ?? true,
         });
     } catch (error) {
         if (isUserFacingError(error)) log.warn(`Could not queue media job (${error.code}): ${error.message}`);

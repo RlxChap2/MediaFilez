@@ -27,12 +27,10 @@ test("keeps progress updates clear without exposing the downloader engine", asyn
 
     await reply.update({ phase: "resolving", engine: "yt-dlp" });
     await reply.update({ phase: "downloading", engine: "gallery-dl", progress: { percent: 50 } });
-    await reply.update({ phase: "uploading", progress: { percent: 75 } });
 
     assert.equal(edits[0].content, "Finding the media...");
     assert.equal(edits[1].content, "Downloading the media | 50.0%...");
-    assert.equal(edits[2].content, "Publishing the media | 75.0%...");
-    assert.doesNotMatch(edits.map((edit) => edit.content).join(" "), /yt-dlp|gallery-dl|Uploading to Discord/);
+    assert.doesNotMatch(`${edits[0].content} ${edits[1].content}`, /yt-dlp|gallery-dl/);
 });
 
 test("commits once and never overwrites success with a later error", async (t) => {
@@ -73,53 +71,6 @@ test("keeps the media reply compact and adds a Nerd Info button", async (t) => {
     assert.equal(edits[0].content, "-# 5 B");
     assert.equal(edits[0].components[0].components[0].label, "Nerd Info");
     assert.match(edits[0].components[0].components[0].custom_id, /^media-nerd:v1:yt-dlp\./);
-});
-
-test("shares a public media URL without uploading an attachment", async () => {
-    const edits = [];
-    const reply = new ReplySession({ editReply: async (payload) => edits.push(payload) });
-    await reply.commit(
-        { remoteUrl: "https://cdn.example.test/clip.mp4", fileName: "clip.mp4", sizeBytes: 50_000_000 },
-        details,
-    );
-    assert.equal(reply.state, "committed");
-    assert.equal(edits.length, 1);
-    assert.match(edits[0].content, /^https:\/\/cdn\.example\.test\/clip\.mp4\n/);
-    assert.equal(edits[0].files, undefined);
-    assert.equal(edits[0].components[0].components[0].label, "Nerd Info");
-});
-
-test("keeps a CDN reply when Discord accepted the edit but the connection failed", async () => {
-    const remoteUrl = "https://cdn.example.test/clip.mp4";
-    const interaction = {
-        editReply: async () => {
-            throw new Error("connection closed");
-        },
-        fetchReply: async () => ({ content: `${remoteUrl}\n-# 47.7 MB` }),
-    };
-    const reply = new ReplySession(interaction);
-    await reply.commit({ remoteUrl, fileName: "clip.mp4", sizeBytes: 50_000_000 }, details);
-    await reply.fail(new Error("late failure"));
-    assert.equal(reply.state, "committed");
-});
-
-test("does not overwrite an uncertain CDN reply with a failure", async () => {
-    const remoteUrl = "https://cdn.example.test/clip.mp4";
-    let edits = 0;
-    const interaction = {
-        editReply: async () => {
-            edits += 1;
-            throw new Error("connection closed");
-        },
-        fetchReply: async () => {
-            throw new Error("connection closed");
-        },
-    };
-    const reply = new ReplySession(interaction);
-    await assert.rejects(reply.commit({ remoteUrl, fileName: "clip.mp4", sizeBytes: 50_000_000 }, details));
-    await reply.fail(new Error("late failure"));
-    assert.equal(reply.state, "unknown");
-    assert.equal(edits, 1);
 });
 
 test("does not place page metadata in the public media reply", async (t) => {

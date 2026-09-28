@@ -1,16 +1,17 @@
 # MediaFilez
 
-MediaFilez sends `/media` requests to the Media API and Worker. Public results are linked from the R2 CDN at their source quality. Private results use a temporary signed R2 link in an ephemeral reply. The bot does not transcode media to meet Discord attachment limits.
+MediaFilez downloads public media into Discord through one `/media` command. It tries ordered engines, validates every result, fits oversized video, audio, or images to the current interaction limit, and streams one confirmed attachment without buffering the whole file in memory.
 
 ## Command
 
 `/media` supports server installs and user installs. It can run in a server channel, a bot DM, or a private channel.
 
-| Option    | Required | Default | Purpose                                                          |
-| --------- | -------- | ------- | ---------------------------------------------------------------- |
-| `url`     | yes      | none    | Public media page or direct media URL                            |
-| `output`  | yes      | none    | `auto`, `video`, `image`, or `audio`                             |
-| `private` | no       | `false` | Make progress and the final result visible only to the requester |
+| Option         | Required | Default | Purpose                                                          |
+| -------------- | -------- | ------- | ---------------------------------------------------------------- |
+| `url`          | yes      | none    | Public media page or direct media URL                            |
+| `output`       | yes      | none    | `auto`, `video`, `image`, or `audio`                             |
+| `fit_to_limit` | no       | `true`  | Process oversized media to fit the current Discord limit         |
+| `private`      | no       | `false` | Make progress and the final result visible only to the requester |
 
 Each output value changes validation and processing:
 
@@ -21,17 +22,17 @@ Each output value changes validation and processing:
 | Image / video frame | Returns a source image, page thumbnail, or a frame extracted from video                  |
 | Audio               | Returns source audio or extracts an MP3 audio track from video                           |
 
-Private results use Discord's ephemeral interaction reply and a signed link that expires. They do not depend on the user's DM settings. An operator can make every guild result private with `PUBLIC_REPLIES_IN_GUILDS=false`.
+Private results use Discord's ephemeral interaction reply, so they do not depend on the user's DM settings. An operator can make every guild result private with `PUBLIC_REPLIES_IN_GUILDS=false`.
 
 `Thumbnail` no longer appears as a separate choice. Old interactions using its stored value remain valid while Discord propagates the updated command.
 
 ## Discord reply
 
-The original interaction shows queue position, transfer progress when available, and the delivery stage. A successful public reply contains a CDN link, its final size, and a `Nerd Info` button. Private replies contain a temporary signed link.
+The original interaction shows queue position, the active engine, transfer progress when an engine reports it, and the processing or upload stage. A successful reply contains the attachment, its final size, and a `Nerd Info` button.
 
-`Nerd Info` opens an ephemeral message with the filename, selected engine, download time, processing time, delivery mode, final size, and any processing or recovery note. Its small payload lives in the button ID, so the button still works after a bot restart. It does not contain the source URL, cookies, or credentials.
+`Nerd Info` opens an ephemeral message with the filename, selected engine, download time, processing time, upload target, final size, and any processing or recovery note. Its small payload lives in the button ID, so the button still works after a bot restart. It does not contain the source URL, cookies, or credentials.
 
-## Earlier 2.1 changes
+## What changed in 2.1
 
 - `/media` includes an `Auto` output that accepts validated video, audio, or image media and chooses the matching processing path.
 - Local installs include FFmpeg and FFprobe packages. `pnpm install` also fetches a SHA-256 verified gallery-dl build into `.tools` when no operator path is supplied.
@@ -42,7 +43,9 @@ The original interaction shows queue position, transfer progress when available,
 - Cobalt now covers its full documented host set in the planner and requests a target-aware video quality instead of always requesting the largest source.
 - External downloaders run only for recognized public platforms. Unknown pages and direct links stay inside the DNS-, redirect-, and byte-guarded HTTP engines, and gallery-dl enforces the byte ceiling during transfer.
 - The queue accepts four jobs by default and two jobs per user. Both values remain configurable.
-- Earlier bot versions used Discord's `attachmentSizeLimit`, bounded-memory uploads, and `fit_to_limit` for oversized media. Current `/media` delivery uses R2 links instead.
+- Discord's `attachmentSizeLimit` is now the normal upload target. The old 7 MiB ceiling is gone.
+- Final Discord uploads use a bounded-memory multipart stream. Nitro-sized attachments no longer expand into several in-memory copies before delivery.
+- `fit_to_limit` now handles oversized audio and images as well as video. Audio is re-encoded to MP3; images step down JPEG quality and resolution only as far as needed.
 - An engine-local timeout falls through to the next engine. Only the whole-job abort stops fallback.
 - yt-dlp receives a private writable cookie copy for each attempt, so the configured source can remain mounted read-only and concurrent jobs cannot rewrite one shared jar.
 - Process-lifetime ownership locks let startup remove abandoned MediaFilez temp directories without touching work owned by another running instance.
@@ -65,7 +68,7 @@ Engine order depends on the host and requested output.
 | Other Cobalt services    | Cobalt, yt-dlp, gallery-dl, page metadata                             |
 | Unknown page             | page metadata, direct HTTP                                            |
 
-Each engine writes into its own attempt directory in the Worker. The Worker checks file signatures and FFprobe streams before committing a result. A fallback starts only after the prior attempt stops and leaves no valid file. A process error does not discard a complete file left behind.
+Each engine writes into its own attempt directory. MediaFilez checks file signatures and FFprobe streams before committing a result. A fallback starts only after the prior attempt stops and leaves no valid file. A process error does not discard a complete file left behind.
 
 For `auto` and `video`, MediaFilez asks yt-dlp for an audio-bearing alternative when the first valid video is silent and yt-dlp remains in the plan. It uses the second result if validation passes. If that attempt fails, MediaFilez keeps the original silent video instead of turning a usable download into an error.
 
@@ -108,27 +111,6 @@ The included PM2 file runs `prod:start`, which publishes the current command def
 ```bash
 pm2 start ecosystem.config.cjs
 ```
-
-### Remote API and Worker
-
-Set `MEDIA_API_URL` and `MEDIA_API_KEY` so the bot can submit jobs to the MediaFilez API. The API enqueues the versioned job for `media-worker`. The bot follows job events and falls back to status polling if the stream disconnects. Set `MEDIA_CDN_BASE_URL` for public results; the API's `R2_PUBLIC_BASE_URL` must match it, and the Worker's `R2_PUBLIC_BUCKET` must name the bucket attached to that domain. Missing API or CDN configuration makes public delivery unavailable.
-
-```env
-MEDIA_API_URL=https://api.example.com
-MEDIA_API_KEY=mf_your_api_key
-MEDIA_API_REQUEST_TIMEOUT_MS=45000
-MEDIA_API_RETRIES=2
-MEDIA_API_RETRY_DELAY_MS=500
-MEDIA_API_POLL_INTERVAL_MS=2000
-MEDIA_API_MAX_DOWNLOAD_SIZE=5gb
-MEDIA_CDN_BASE_URL=https://cdn.example.com
-```
-
-The bot retries transient API failures (including gateway and server errors) with a short exponential backoff. Set `MEDIA_API_RETRIES=0` to disable retries, or adjust `MEDIA_API_RETRY_DELAY_MS` for a different starting delay. Permanent client errors are returned immediately.
-
-The public link is visible to anyone who can read or forward the message. Private replies use a signed URL from the separate private bucket; users must open it before it expires. Neither route fits files to Discord's attachment limit. Discord may show an inline preview when the file format is playable and the channel grants **Embed Links** permission. Otherwise the direct download link remains usable.
-
-The bot also publishes its application ID, user ID, and guild IDs to `POST /api/v1/internal/discord/presence` when Discord reports it ready. The API keeps the latest snapshot in memory and exposes authenticated `GET /api/v1/discord/presence` and `/events` endpoints. Guild names, members, and message content are not sent.
 
 Useful diagnostics:
 
@@ -219,19 +201,6 @@ Start with `.env.example`. Size values accept `b`, `kb`, `kib`, `mb`, `mib`, `gb
 | `DISCORD_UPLOAD_RETRY_DELAY_MS` | `1500`   | Base delay between verified upload retries               |
 | `STATUS_UPDATE_INTERVAL_MS`     | `2500`   | Minimum delay between progress-message edits             |
 
-### Remote execution
-
-| Variable                       | Default | Purpose                                                               |
-| ------------------------------ | ------- | --------------------------------------------------------------------- |
-| `MEDIA_API_URL`                | empty   | API base URL; enables API/Worker jobs when paired with an API key     |
-| `MEDIA_API_KEY`                | empty   | API key used for job creation, polling, file delivery, and presence   |
-| `MEDIA_API_REQUEST_TIMEOUT_MS` | `45000` | Timeout for one API request                                           |
-| `MEDIA_API_RETRIES`            | `2`     | Retries for transient API/network failures                            |
-| `MEDIA_API_RETRY_DELAY_MS`     | `500`   | Initial delay for API retries; later attempts use exponential backoff |
-| `MEDIA_API_POLL_INTERVAL_MS`   | `2000`  | Delay between fallback job status checks                              |
-| `MEDIA_API_MAX_DOWNLOAD_SIZE`  | `5gb`   | Source limit sent to the API                                          |
-| `MEDIA_CDN_BASE_URL`           | empty   | Trusted public R2 domain for original-quality server replies          |
-
 ### Timeouts
 
 | Variable                   | Default  | Purpose                                     |
@@ -257,7 +226,7 @@ Start with `.env.example`. Size values accept `b`, `kb`, `kib`, `mb`, `mib`, `gb
 | `FFMPEG_PATH`                | automatic              | Operator-managed FFmpeg executable                                                                 |
 | `FFPROBE_PATH`               | automatic              | Operator-managed FFprobe executable                                                                |
 | `FFMPEG_THREADS`             | `2`                    | Encoder threads per fitting job                                                                    |
-| `YOUTUBE_JS_ENABLED`         | `false`                | Enables the YouTube.js fallback when an evaluator is configured                                    |
+| `YOUTUBE_JS_ENABLED`         | `true`                 | Enables the YouTube.js fallback                                                                    |
 | `GALLERY_DL_ENABLED`         | `true`                 | Enables gallery and image extraction                                                               |
 | `GALLERY_DL_PATH`            | automatic              | Operator-managed gallery-dl executable                                                             |
 | `PAGE_METADATA_ENABLED`      | `true`                 | Enables generic page metadata extraction                                                           |
@@ -287,7 +256,7 @@ Start with `.env.example`. Size values accept `b`, `kb`, `kib`, `mb`, `mib`, `gb
 
 Discord sends `attachment_size_limit` with each interaction. MediaFilez uses the smaller value between that limit, `DISCORD_UPLOAD_TARGET_SIZE`, and its 500 MiB hard ceiling. Discord documents this field as the effective per-attachment limit for the invoking user or guild: [Discord interaction and upload reference](https://docs.discord.com/developers/interactions/receiving-and-responding).
 
-The `/media` delivery path does not use this attachment limit. The Worker may still convert media when the selected output type requires it, such as extracting audio or a video frame.
+When `fit_to_limit` is enabled, MediaFilez keeps media unchanged if it fits. Oversized video goes through remux, audio-only reduction, then H.264 fitting when needed. Oversized audio is re-encoded at a target-aware bitrate. Oversized images become JPEG and step down through bounded quality and resolution attempts. Files that cannot fit at usable settings return a measured size error.
 
 The final multipart request streams from disk and remains under the whole-job abort signal. Upload retries are verification-first. If Discord closes a connection, the bot fetches the original reply and checks its attachment before another upload starts. An unknown delivery state never clears a file that Discord may have accepted.
 
