@@ -11,7 +11,7 @@ const PHASE_COPY = {
     resolving: "Finding the media",
     downloading: "Downloading the media",
     processing: "Preparing the media",
-    uploading: "Publishing the media",
+    uploading: "Uploading to Discord",
 };
 
 function progressText(progress) {
@@ -164,34 +164,6 @@ export class ReplySession {
         if (this.state !== "open") throw new Error(`Cannot commit a reply in state ${this.state}.`);
         await this.pendingUpdate;
         this.state = "committing";
-
-        if (output.remoteUrl) {
-            try {
-                await this.interaction.editReply({
-                    content: `${output.remoteUrl}\n${deliveredCopy(output)}`,
-                    components: createNerdInfoComponents(output, details),
-                    allowedMentions: { parse: [] },
-                });
-                this.state = "committed";
-                return;
-            } catch (error) {
-                try {
-                    const message = await this.interaction.fetchReply();
-                    if (message?.content?.startsWith(`${output.remoteUrl}\n`)) {
-                        this.state = "committed";
-                        return;
-                    }
-                } catch {
-                    this.state = "unknown";
-                    throw new DeliveryUnknownError(
-                        "Discord did not confirm whether the media link was delivered. Check the original response before trying again.",
-                        { cause: error },
-                    );
-                }
-                this.state = "open";
-                throw error;
-            }
-        }
 
         for (let attempt = 1; attempt <= this.uploadAttempts; attempt += 1) {
             const payload = {

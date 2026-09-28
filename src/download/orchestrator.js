@@ -62,7 +62,7 @@ function publicFailure(attempts, outputType) {
         return "The source is an image. Choose image output and try again.";
     }
     if (/account authentication|cookies|login required|empty media response/i.test(messages)) {
-        return "Could not retrieve media from this source. Try another link or try again later.";
+        return "This post needs an authenticated session. Export fresh browser cookies to MEDIA_COOKIES_FILE, then try again.";
     }
     if (/HTTP (?:Error )?403|forbidden|blocked this server's network address/i.test(messages)) {
         return "This source blocked automated access (HTTP 403), and no enabled engine could extract its media. Try a direct media URL or another source.";

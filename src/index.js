@@ -1,12 +1,22 @@
 import { Client, Events, GatewayIntentBits } from "discord.js";
 import { config, requireConfig } from "./config.js";
+import { formatBytes } from "./utils/format.js";
 import { log } from "./utils/logger.js";
+import { checkFFmpeg } from "./utils/ffmpeg.js";
 import { cleanupStaleTempDirs } from "./utils/temp.js";
 import { handleCommand } from "./handlers/commandHandler.js";
-import { mediaApiEnabled, publishDiscordPresence } from "./integrations/mediaApi.js";
 
 requireConfig(["botToken"]);
 await cleanupStaleTempDirs();
+
+const ffmpegReady = await checkFFmpeg();
+if (!ffmpegReady) {
+    log.warn(
+        "FFmpeg or ffprobe was not found. Video fitting, thumbnails, and audio extraction will fail until it is installed.",
+    );
+} else {
+    log.ok("FFmpeg and ffprobe are ready.");
+}
 
 const client = new Client({
     intents: [GatewayIntentBits.Guilds],
@@ -17,17 +27,12 @@ const client = new Client({
     },
 });
 
-log.info(`Discord REST timeout: ${config.discordRestTimeoutMs}ms; internal retries: ${config.discordRestRetries}.`);
+log.info(
+    `Discord REST timeout: ${config.discordRestTimeoutMs}ms; internal retries: ${config.discordRestRetries}; upload target: ${formatBytes(config.discordUploadTargetBytes)}.`,
+);
 
-client.once(Events.ClientReady, async (readyClient) => {
+client.once(Events.ClientReady, (readyClient) => {
     log.ok(`Ready as ${readyClient.user.tag}`);
-    if (!mediaApiEnabled()) return;
-    try {
-        await publishDiscordPresence(readyClient);
-        log.info(`Published Discord presence to the Media API (${readyClient.guilds.cache.size} guilds).`);
-    } catch (error) {
-        log.warn(`Could not publish Discord presence to the Media API: ${error.message}`);
-    }
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {

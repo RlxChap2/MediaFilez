@@ -81,9 +81,7 @@ export const config = {
     ffmpegPath: process.env.FFMPEG_PATH || null,
     ffprobePath: process.env.FFPROBE_PATH || null,
     ffmpegThreads: parseInteger(process.env.FFMPEG_THREADS, 2, 1, 8),
-    // youtubei.js requires an explicit JavaScript evaluator; leave this
-    // disabled until one is configured so failed fallbacks stay fast.
-    youtubeJsEnabled: parseBoolean(process.env.YOUTUBE_JS_ENABLED, false),
+    youtubeJsEnabled: parseBoolean(process.env.YOUTUBE_JS_ENABLED, true),
     galleryDlEnabled: parseBoolean(process.env.GALLERY_DL_ENABLED, true),
     galleryDlPath: process.env.GALLERY_DL_PATH || null,
     pageMetadataEnabled: parseBoolean(process.env.PAGE_METADATA_ENABLED, true),
@@ -106,20 +104,6 @@ export const config = {
     cobaltApiKey: process.env.COBALT_API_KEY,
     tempPrefix: process.env.TEMP_PREFIX || "mediafilez-",
     userAgent: process.env.HTTP_USER_AGENT || "MediaFilez/2.1 (Discord media downloader)",
-    mediaApiUrl:
-        String(process.env.MEDIA_API_URL || "")
-            .trim()
-            .replace(/\/$/, "") || null,
-    mediaApiKey: String(process.env.MEDIA_API_KEY || "").trim() || null,
-    mediaApiRequestTimeoutMs: parseInteger(process.env.MEDIA_API_REQUEST_TIMEOUT_MS, 45_000, 5_000, 5 * 60_000),
-    mediaApiRetries: parseInteger(process.env.MEDIA_API_RETRIES, 2, 0, 5),
-    mediaApiRetryDelayMs: parseInteger(process.env.MEDIA_API_RETRY_DELAY_MS, 500, 100, 10_000),
-    mediaApiPollIntervalMs: parseInteger(process.env.MEDIA_API_POLL_INTERVAL_MS, 2_000, 500, 10_000),
-    mediaCdnBaseUrl:
-        String(process.env.MEDIA_CDN_BASE_URL || "")
-            .trim()
-            .replace(/\/$/, "") || null,
-    mediaApiMaxDownloadBytes: parseSize(process.env.MEDIA_API_MAX_DOWNLOAD_SIZE, 5 * 1024 ** 3, 5 * 1024 ** 3),
 };
 
 export function requireConfig(keys) {
