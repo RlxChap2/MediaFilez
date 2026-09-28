@@ -72,7 +72,7 @@ test("shows Nerd Info for a CDN link without an attachment", async () => {
     await handleNerdInfoButton({
         isButton: () => true,
         customId: components[0].components[0].custom_id,
-        message: { content: "https://cdn.example.test/clip.mp4\n-# 47.7 MB", attachments: new Map() },
+        message: { content: "-# 47.7 MB · [video](https://cdn.example.test/clip.mp4)", attachments: new Map() },
         reply: async (value) => (sent = value),
     });
     assert.match(sent.content, /clip\.mp4/);

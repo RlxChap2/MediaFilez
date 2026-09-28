@@ -27,7 +27,7 @@ Private results use Discord's ephemeral interaction reply and a signed link that
 
 ## Discord reply
 
-The original interaction shows queue position, transfer progress when available, and the delivery stage. A successful public reply contains a CDN link, its final size, and a `Nerd Info` button. Private replies contain a temporary signed link.
+The original interaction shows queue position, transfer progress when available, and the delivery stage. A successful public reply shows the final size, a compact CDN link, a `Nerd Info` button, and an image preview for videos when thumbnail extraction succeeds. Private replies contain a temporary signed link.
 
 `Nerd Info` opens an ephemeral message with the filename, selected engine, download time, processing time, delivery mode, final size, and any processing or recovery note. Its small payload lives in the button ID, so the button still works after a bot restart. It does not contain the source URL, cookies, or credentials.
 
@@ -126,7 +126,7 @@ MEDIA_CDN_BASE_URL=https://cdn.example.com
 
 The bot retries transient API failures (including gateway and server errors) with a short exponential backoff. Set `MEDIA_API_RETRIES=0` to disable retries, or adjust `MEDIA_API_RETRY_DELAY_MS` for a different starting delay. Permanent client errors are returned immediately.
 
-The public link is visible to anyone who can read or forward the message. Private replies use a signed URL from the separate private bucket; users must open it before it expires. Neither route fits files to Discord's attachment limit. Discord may show an inline preview when the file format is playable and the channel grants **Embed Links** permission. Otherwise the direct download link remains usable.
+The public link is visible to anyone who can read or forward the message. Private replies use a signed URL from the separate private bucket; users must open it before it expires. Neither route fits files to Discord's attachment limit. The video image preview does not transcode or replace the original file. Discord controls whether an external video link is playable inline; large files may show only the preview image and download link. The channel must grant **Embed Links** permission.
 
 The bot also publishes its application ID, user ID, and guild IDs to `POST /api/v1/internal/discord/presence` when Discord reports it ready. The API keeps the latest snapshot in memory and exposes authenticated `GET /api/v1/discord/presence` and `/events` endpoints. Guild names, members, and message content are not sent.
 
