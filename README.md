@@ -36,7 +36,7 @@ The original interaction shows queue position, the active engine, transfer progr
 
 - `/media` includes an `Auto` output that accepts validated video, audio, or image media and chooses the matching processing path.
 - Local installs include FFmpeg and FFprobe packages. `pnpm install` also fetches a SHA-256 verified gallery-dl build into `.tools` when no operator path is supplied.
-- Instagram has a direct embed-proxy fallback. The default converts `instagram.com` to `kkkinstagram.com`, then downloads the returned media through the same redirect, SSRF, size, and signature checks as any other URL.
+- Instagram tries VideoDropper first using its encrypted URL protocol. Its resolver has a 20-second deadline, and returned files retain the normal URL, byte-limit and artifact checks. Set `DISABLED_ENGINES=videodropper` to omit it. Instagram also has a direct embed-proxy fallback. The default converts `instagram.com` to `kkkinstagram.com`, then downloads the returned media through the same redirect, SSRF, size, and signature checks as any other URL.
 - Unknown pages gain a metadata extractor for Open Graph, Twitter card, and HTML media tags.
 - Share-link wrappers and JSON-LD `contentUrl` fields feed the guarded direct downloader. Reddit posts first use the first-party embed path, then a configurable public embed relay when Reddit blocks the bot server's address.
 - Multiple Cobalt endpoints are tried in order. A failed endpoint enters a short cooldown so queued jobs can skip the dead host.
@@ -60,8 +60,8 @@ Engine order depends on the host and requested output.
 | ------------------------ | --------------------------------------------------------------------- |
 | Direct media URL         | direct HTTP                                                           |
 | YouTube                  | yt-dlp, YouTube.js, Cobalt, page metadata                             |
-| Instagram auto or image  | gallery-dl, yt-dlp, Instagram proxy, Cobalt, page metadata            |
-| Instagram video or audio | yt-dlp, Instagram proxy, Cobalt, gallery-dl, page metadata            |
+| Instagram auto or image  | VideoDropper, gallery-dl, yt-dlp, Instagram proxy, Cobalt, page metadata            |
+| Instagram video or audio | VideoDropper, yt-dlp, Instagram proxy, Cobalt, gallery-dl, page metadata            |
 | Pinterest, Flickr, Imgur | gallery-dl, yt-dlp, Cobalt, page metadata                             |
 | Reddit auto or image     | Reddit embed, Reddit proxy, gallery-dl, yt-dlp, Cobalt, page metadata |
 | Reddit video or audio    | Cobalt, yt-dlp, Reddit embed, Reddit proxy, gallery-dl, page metadata |
@@ -232,7 +232,7 @@ Start with `.env.example`. Size values accept `b`, `kb`, `kib`, `mb`, `mib`, `gb
 | `PAGE_METADATA_ENABLED`      | `true`                 | Enables generic page metadata extraction                                                           |
 | `PAGE_METADATA_MAX_SIZE`     | `1mb`                  | Maximum HTML read by the metadata engine                                                           |
 | `INSTAGRAM_PROXY_HOSTS`      | `www.kkkinstagram.com` | Ordered Instagram relay hosts; use `none` to disable                                               |
-| `INSTAGRAM_PROXY_FIRST`      | `false`                | Try the configured relay before other engines for Instagram video/auto; the relay receives the URL |
+| `INSTAGRAM_PROXY_FIRST`      | `false`                | Prefer the relay after VideoDropper for Instagram video/auto; the relay receives the URL |
 | `REDDIT_PROXY_HOSTS`         | `redditez.com`         | Ordered Reddit embed relay hosts; use `none` to disable                                            |
 | `DISABLED_ENGINES`           | empty                  | Engine names removed from every plan                                                               |
 
