@@ -5,7 +5,8 @@ import { DownloadMethodError, UserFacingError, userError } from "../utils/errors
 import { assertPublicHttpUrl } from "../utils/security.js";
 import { log } from "../utils/logger.js";
 import { planEngines } from "./planner.js";
-import { commitArtifact, recoverArtifact, validateArtifact } from "./artifact.js";
+import { recoverArtifact, validateArtifact } from "./artifact.js";
+import { commitMediaCollection, validateMediaCollection, collectionFailure } from "./collection.js";
 import { downloadDirectHttp } from "./engines/directHttp.js";
 import { downloadWithYtDlp } from "./engines/ytDlp.js";
 import { downloadWithCobalt } from "./engines/cobalt.js";
@@ -95,10 +96,11 @@ export async function downloadMedia(rawUrl, jobDir, options = {}) {
     const plan = options.plan ?? planEngines(rawUrl, outputType);
     const attempts = [];
     let silentFallback = null;
+    let expectedItems = 1;
 
     async function commitResult(artifact, method, metadata, recovered) {
         return {
-            ...(await commitArtifact(artifact, jobDir)),
+            ...(await commitMediaCollection(artifact, jobDir)),
             method,
             metadata,
             attempts,
@@ -107,6 +109,7 @@ export async function downloadMedia(rawUrl, jobDir, options = {}) {
     }
 
     async function selectResult(artifact, method, metadata, recovered, index) {
+        if (artifact.items) return await commitResult(artifact, method, metadata, recovered);
         if (silentFallback) {
             if (artifact.mediaKind !== "video" || !artifact.mediaInfo?.hasAudio) return null;
         } else if (
@@ -131,6 +134,7 @@ export async function downloadMedia(rawUrl, jobDir, options = {}) {
         const attemptDir = path.join(jobDir, `attempt-${String(index + 1).padStart(2, "0")}-${engineName}`);
         await fs.mkdir(attemptDir, { recursive: true });
         const startedAt = performance.now();
+        let collectionAttempt = false;
         await options.onStatus?.({
             phase: "resolving",
             engine: engineName,
@@ -143,14 +147,24 @@ export async function downloadMedia(rawUrl, jobDir, options = {}) {
                 ...options,
                 maxBytes,
                 outputType,
+                onCollection: (count) => {
+                    expectedItems = Math.max(expectedItems, count);
+                    collectionAttempt = count > 1;
+                },
                 onProgress: (progress) => options.onStatus?.({ phase: "downloading", engine: engineName, progress }),
             });
-            const validated = await validateArtifact(candidate, {
-                outputType,
-                maxBytes,
-                preferredName: candidate.fileName,
-                signal: options.signal,
-            });
+            collectionAttempt ||= Boolean(candidate.items);
+            const validated = candidate.items
+                ? await validateMediaCollection(candidate.items, { outputType, maxBytes, signal: options.signal })
+                : await validateArtifact(candidate, {
+                      outputType,
+                      maxBytes,
+                      preferredName: candidate.fileName,
+                      signal: options.signal,
+                  });
+            if ((validated.items?.length ?? 1) < expectedItems) {
+                throw collectionFailure(new Error("The engine returned only part of the Instagram post."));
+            }
             const result = await selectResult(
                 { ...candidate, ...validated },
                 candidate.method || engineName,
@@ -171,7 +185,10 @@ export async function downloadMedia(rawUrl, jobDir, options = {}) {
                 continue;
             }
 
-            const recovered = await recoverArtifact(attemptDir, { outputType, maxBytes, signal: options.signal });
+            const recovered =
+                collectionAttempt || expectedItems > 1 || error.incompleteCollection
+                    ? null
+                    : await recoverArtifact(attemptDir, { outputType, maxBytes, signal: options.signal });
             if (recovered) {
                 const result = await selectResult(recovered, engineName, null, true, index);
                 if (result) {

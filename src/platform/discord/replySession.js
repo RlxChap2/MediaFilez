@@ -5,6 +5,7 @@ import { formatBytes, formatElapsed } from "../../utils/format.js";
 import { log } from "../../utils/logger.js";
 import { uploadDiscordReply } from "./discordUpload.js";
 import { createNerdInfoComponents } from "./nerdInfo.js";
+import { attachmentBatches, interactionMessageLimit } from "./attachmentBatches.js";
 
 const PHASE_COPY = {
     queued: "Queued",
@@ -43,9 +44,16 @@ function hasExpectedAttachment(message, expected) {
     const attachments = message?.attachments;
     if (!attachments) return false;
     const values = typeof attachments.values === "function" ? [...attachments.values()] : attachments;
-    return [...values].some((attachment) => {
-        const sizeMatches = !expected.sizeBytes || !attachment.size || attachment.size === expected.sizeBytes;
-        return attachment.name === expected.fileName && sizeMatches;
+    const remaining = [...values];
+    return (Array.isArray(expected) ? expected : [expected]).every((file) => {
+        const index = remaining.findIndex(
+            (attachment) =>
+                attachment.name === file.fileName &&
+                (!file.sizeBytes || !attachment.size || attachment.size === file.sizeBytes),
+        );
+        if (index < 0) return false;
+        remaining.splice(index, 1);
+        return true;
     });
 }
 
@@ -131,6 +139,15 @@ export class ReplySession {
         this.upload = options.upload ?? uploadDiscordReply;
         this.wait = options.wait ?? wait;
         this.pendingUpdate = Promise.resolve();
+        this.messageId = options.messageId ?? "@original";
+        this.editReply = (payload) =>
+            this.messageId === "@original"
+                ? interaction.editReply(payload)
+                : interaction.webhook.editMessage(this.messageId, payload);
+        this.fetchReply = () =>
+            this.messageId === "@original"
+                ? interaction.fetchReply()
+                : interaction.webhook.fetchMessage(this.messageId);
     }
 
     /**
@@ -155,7 +172,7 @@ export class ReplySession {
         this.lastPhase = status.phase;
         this.lastUpdateAt = now;
         this.pendingUpdate = this.pendingUpdate
-            .then(() => (this.state === "open" ? this.interaction.editReply({ content: statusCopy(status) }) : null))
+            .then(() => (this.state === "open" ? this.editReply({ content: statusCopy(status) }) : null))
             .catch((error) => log.warn(`Could not update job status: ${error.message}`));
         return this.pendingUpdate;
     }
@@ -164,29 +181,36 @@ export class ReplySession {
         if (this.state !== "open") throw new Error(`Cannot commit a reply in state ${this.state}.`);
         await this.pendingUpdate;
         this.state = "committing";
+        const outputs = Array.isArray(output) ? output : [output];
+        const first = outputs[0];
+        const totalBytes = outputs.reduce((sum, item) => sum + item.sizeBytes, 0);
 
         for (let attempt = 1; attempt <= this.uploadAttempts; attempt += 1) {
             const payload = {
-                content: deliveredCopy(output),
-                components: createNerdInfoComponents(output, details),
-                filePath: output.filePath,
-                fileName: output.fileName,
-                sizeBytes: output.sizeBytes,
+                content:
+                    outputs.length === 1
+                        ? deliveredCopy(first)
+                        : `-# ${outputs.length} files, ${formatBytes(totalBytes)}`,
+                components: createNerdInfoComponents(first, details),
+                filePath: first.filePath,
+                fileName: first.fileName,
+                sizeBytes: first.sizeBytes,
+                ...(outputs.length > 1 ? { files: outputs } : {}),
             };
             log.info(
-                `Discord upload attempt ${attempt}/${this.uploadAttempts}: ${output.fileName} (${formatBytes(output.sizeBytes)}).`,
+                `Discord upload attempt ${attempt}/${this.uploadAttempts}: ${outputs.length} file(s), ${formatBytes(totalBytes)}.`,
             );
 
             try {
-                await this.upload(this.interaction, payload, { signal: options.signal });
+                await this.upload(this.interaction, payload, { signal: options.signal, messageId: this.messageId });
                 this.state = "committed";
                 return;
             } catch (uploadError) {
                 let verificationError;
                 for (let verification = 1; verification <= 3; verification += 1) {
                     try {
-                        const message = await this.interaction.fetchReply();
-                        if (hasExpectedAttachment(message, output)) {
+                        const message = await this.fetchReply();
+                        if (hasExpectedAttachment(message, outputs)) {
                             this.state = "committed";
                             log.warn(
                                 "Discord upload call failed, but the attachment is present on the original response.",
@@ -239,12 +263,47 @@ export class ReplySession {
         }
     }
 
+    async commitMany(outputs, details, options = {}) {
+        const batches = attachmentBatches(outputs, interactionMessageLimit(this.interaction));
+        await this.commit(batches[0], details, options);
+        let delivered = batches[0].length;
+        for (const batch of batches.slice(1)) {
+            let reply;
+            try {
+                options.signal?.throwIfAborted();
+                const message = await this.interaction.followUp({
+                    content: `Uploading the next ${batch.length} files...`,
+                    ...(this.interaction.ephemeral ? { flags: 64 } : {}),
+                    allowedMentions: { parse: [] },
+                });
+                reply = new ReplySession(this.interaction, {
+                    messageId: message.id,
+                    upload: this.upload,
+                    wait: this.wait,
+                    uploadAttempts: this.uploadAttempts,
+                    uploadRetryDelayMs: this.uploadRetryDelayMs,
+                });
+                await reply.commit(batch, details, options);
+                delivered += batch.length;
+            } catch (error) {
+                await reply?.fail(error);
+                await this.editReply({
+                    content: `${delivered}/${outputs.length} files confirmed. Check the replies before retrying the remaining files.`,
+                }).catch(() => {});
+                throw new DeliveryUnknownError(
+                    `Discord confirmed ${delivered}/${outputs.length} files. Check the replies before trying again.`,
+                    { cause: error },
+                );
+            }
+        }
+    }
+
     async fail(error) {
         if (["committed", "committing", "unknown", "failed"].includes(this.state) || error?.responseLocked) return;
         await this.pendingUpdate;
         if (this.state !== "open") return;
         try {
-            await this.interaction.editReply({
+            await this.editReply({
                 content: `Could not finish: ${messageForError(error)}`,
                 files: [],
             });

@@ -1,4 +1,6 @@
 import PQueue from "p-queue";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { MessageFlags, PermissionFlagsBits } from "discord.js";
 import { config, DISCORD_HARD_MAX_BYTES } from "../config.js";
 import { FILE_LIMITS, OUTPUT_TYPES } from "../utils/constants.js";
@@ -9,6 +11,7 @@ import { log } from "../utils/logger.js";
 import { downloadMedia } from "../download/orchestrator.js";
 import { prepareMediaForDiscord } from "../media/processor.js";
 import { ReplySession } from "../platform/discord/replySession.js";
+import { carouselUploadTarget } from "../platform/discord/attachmentBatches.js";
 
 const queue = new PQueue({ concurrency: config.maxConcurrentJobs });
 const activeByUser = new Map();
@@ -112,14 +115,25 @@ async function runMediaJob(interaction, reply, request, options = {}) {
         const downloadMs = performance.now() - downloadStarted;
 
         const processStarted = performance.now();
-        const output = await prepareMediaForDiscord(download, {
-            outputType: request.outputType,
-            tempDir,
-            maxAttachmentBytes: uploadTargetBytes,
-            allowCompression: request.fitToLimit,
-            signal,
-            onStatus: (status) => reply.update(status),
-        });
+        const items = download.items ?? [download];
+        const outputs = [];
+        const itemLimit = carouselUploadTarget(interaction, items.length, uploadTargetBytes);
+        for (const [index, item] of items.entries()) {
+            signal.throwIfAborted();
+            const processDir = items.length > 1 ? path.join(tempDir, `process-${index + 1}`) : tempDir;
+            await fs.mkdir(processDir, { recursive: true });
+            outputs.push(
+                await prepareMediaForDiscord(item, {
+                    outputType: request.outputType,
+                    tempDir: processDir,
+                    maxAttachmentBytes: itemLimit,
+                    allowCompression: request.fitToLimit,
+                    signal,
+                    onStatus: (status) => reply.update(status),
+                }),
+            );
+        }
+        const output = outputs[0];
         const processMs = performance.now() - processStarted;
         log.info(
             `Prepared ${output.fileName} (${formatBytes(output.sizeBytes)}; ${output.sizeBytes} bytes) in ${formatElapsed(processMs)}. Upload target: ${uploadTargetBytes} bytes.`,
@@ -129,8 +143,9 @@ async function runMediaJob(interaction, reply, request, options = {}) {
             { phase: "uploading", detail: `Uploading ${formatBytes(output.sizeBytes)} to Discord` },
             { force: true },
         );
-        await reply.commit(
-            output,
+        const commit = outputs.length > 1 ? reply.commitMany.bind(reply) : reply.commit.bind(reply);
+        await commit(
+            outputs.length > 1 ? outputs : output,
             {
                 method: download.method,
                 downloadMs,

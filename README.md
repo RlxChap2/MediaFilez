@@ -1,6 +1,10 @@
 # MediaFilez
 
-MediaFilez downloads public media into Discord through one `/media` command. It tries ordered engines, validates every result, fits oversized video, audio, or images to the current interaction limit, and streams one confirmed attachment without buffering the whole file in memory.
+MediaFilez downloads public media into Discord through one `/media` command. It tries ordered engines, validates every result, fits oversized video, audio, or images to the current interaction limit, and streams confirmed attachments without buffering whole files in memory.
+
+Instagram carousel posts return all photos and videos, up to 50 files. Messages contain at most 10 attachments and split earlier when the combined file size reaches 24 MiB, leaving room below Discord's documented 25 MiB request limit. User-only installs use at most the original reply and five followups; file fitting reduces individual sizes to fit that limit. A later delivery failure preserves confirmed messages and reports how many files were confirmed. Mixed posts follow the resolver's grouping of videos and photos, which may differ from Instagram's slide order.
+
+See Discord's [message request limits](https://docs.discord.com/developers/resources/message#create-message) and [interaction followup limits](https://docs.discord.com/developers/interactions/receiving-and-responding#create-followup-message).
 
 ## Command
 
@@ -56,17 +60,17 @@ Engine order depends on the host and requested output.
 
 `Auto` starts with the extractor best suited to the host, then falls back through the remaining engines. Direct file URLs use direct HTTP first. Page metadata checks video, audio, and image fields in that order. File signatures and FFprobe streams determine the final media type whenever available, and validation rejects unknown media.
 
-| Source                   | Default order                                                         |
-| ------------------------ | --------------------------------------------------------------------- |
-| Direct media URL         | direct HTTP                                                           |
-| YouTube                  | yt-dlp, YouTube.js, Cobalt, page metadata                             |
-| Instagram auto or image  | VideoDropper, gallery-dl, yt-dlp, Instagram proxy, Cobalt, page metadata            |
-| Instagram video or audio | VideoDropper, yt-dlp, Instagram proxy, Cobalt, gallery-dl, page metadata            |
-| Pinterest, Flickr, Imgur | gallery-dl, yt-dlp, Cobalt, page metadata                             |
-| Reddit auto or image     | Reddit embed, Reddit proxy, gallery-dl, yt-dlp, Cobalt, page metadata |
-| Reddit video or audio    | Cobalt, yt-dlp, Reddit embed, Reddit proxy, gallery-dl, page metadata |
-| Other Cobalt services    | Cobalt, yt-dlp, gallery-dl, page metadata                             |
-| Unknown page             | page metadata, direct HTTP                                            |
+| Source                   | Default order                                                            |
+| ------------------------ | ------------------------------------------------------------------------ |
+| Direct media URL         | direct HTTP                                                              |
+| YouTube                  | yt-dlp, YouTube.js, Cobalt, page metadata                                |
+| Instagram auto or image  | VideoDropper, gallery-dl, yt-dlp, Instagram proxy, Cobalt, page metadata |
+| Instagram video or audio | VideoDropper, yt-dlp, Instagram proxy, Cobalt, gallery-dl, page metadata |
+| Pinterest, Flickr, Imgur | gallery-dl, yt-dlp, Cobalt, page metadata                                |
+| Reddit auto or image     | Reddit embed, Reddit proxy, gallery-dl, yt-dlp, Cobalt, page metadata    |
+| Reddit video or audio    | Cobalt, yt-dlp, Reddit embed, Reddit proxy, gallery-dl, page metadata    |
+| Other Cobalt services    | Cobalt, yt-dlp, gallery-dl, page metadata                                |
+| Unknown page             | page metadata, direct HTTP                                               |
 
 Each engine writes into its own attempt directory. MediaFilez checks file signatures and FFprobe streams before committing a result. A fallback starts only after the prior attempt stops and leaves no valid file. A process error does not discard a complete file left behind.
 
@@ -232,7 +236,7 @@ Start with `.env.example`. Size values accept `b`, `kb`, `kib`, `mb`, `mib`, `gb
 | `PAGE_METADATA_ENABLED`      | `true`                 | Enables generic page metadata extraction                                                           |
 | `PAGE_METADATA_MAX_SIZE`     | `1mb`                  | Maximum HTML read by the metadata engine                                                           |
 | `INSTAGRAM_PROXY_HOSTS`      | `www.kkkinstagram.com` | Ordered Instagram relay hosts; use `none` to disable                                               |
-| `INSTAGRAM_PROXY_FIRST`      | `false`                | Prefer the relay after VideoDropper for Instagram video/auto; the relay receives the URL |
+| `INSTAGRAM_PROXY_FIRST`      | `false`                | Prefer the relay after VideoDropper for Instagram video/auto; the relay receives the URL           |
 | `REDDIT_PROXY_HOSTS`         | `redditez.com`         | Ordered Reddit embed relay hosts; use `none` to disable                                            |
 | `DISABLED_ENGINES`           | empty                  | Engine names removed from every plan                                                               |
 

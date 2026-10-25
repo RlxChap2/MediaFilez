@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { PermissionFlagsBits, PermissionsBitField } from "discord.js";
 import {
     enqueue,
@@ -10,6 +12,51 @@ import {
 } from "../../src/jobs/mediaJob.js";
 
 const MiB = 1024 * 1024;
+
+test("prepares and commits every carousel item before cleaning the job directory", async () => {
+    const png = Buffer.from(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+        "base64",
+    );
+    let committed;
+    let directory;
+    const reply = {
+        update: async () => {},
+        commit: async () => assert.fail("must deliver the whole collection"),
+        commitMany: async (items) => {
+            assert.equal(items.length, 3);
+            for (const item of items) assert.deepEqual(await fs.readFile(item.filePath), png);
+            committed = items;
+        },
+        fail: async (error) => assert.fail(error.message),
+    };
+    await runMediaJob(
+        { user: { tag: "carousel-test" }, attachmentSizeLimit: 10 * MiB },
+        reply,
+        { url: "https://www.instagram.com/p/fixture/", outputType: "auto", fitToLimit: true },
+        {
+            downloadMedia: async (_url, tempDir) => {
+                directory = tempDir;
+                const items = [];
+                for (let i = 1; i <= 3; i++) {
+                    const filePath = path.join(tempDir, `${i}.png`);
+                    await fs.writeFile(filePath, png);
+                    items.push({
+                        filePath,
+                        fileName: `${i}.png`,
+                        sizeBytes: png.length,
+                        mime: "image/png",
+                        mediaKind: "image",
+                        extension: "png",
+                    });
+                }
+                return { ...items[0], items, method: "fixture" };
+            },
+        },
+    );
+    assert.equal(committed.length, 3);
+    await assert.rejects(fs.stat(directory), { code: "ENOENT" });
+});
 
 test("keeps an operator ceiling below the Discord advertised limit", () => {
     const interaction = { attachmentSizeLimit: 10 * MiB };
