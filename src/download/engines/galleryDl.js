@@ -6,6 +6,7 @@ import { config } from "../../config.js";
 import { DownloadMethodError } from "../../utils/errors.js";
 import { ProcessExecutionError, runProcess } from "../../utils/process.js";
 import { recoverArtifact } from "../artifact.js";
+import { isInstagramPost, recoverMediaCollection, collectionFailure, MAX_COLLECTION_ITEMS } from "../collection.js";
 
 /**
  * Selects the gallery-dl executable path from configuration, a bundled binary, or the system PATH.
@@ -64,7 +65,7 @@ export function galleryDlArgs(rawUrl, attemptDir, options = {}) {
         "--directory",
         attemptDir,
         "--range",
-        "1",
+        isInstagramPost(rawUrl) ? `1-${MAX_COLLECTION_ITEMS + 1}` : "1",
         "--write-metadata",
         "--write-info-json",
         "--retries",
@@ -74,7 +75,7 @@ export function galleryDlArgs(rawUrl, attemptDir, options = {}) {
         "--filesize-max",
         String(maxBytes),
         "--filename",
-        "{title[:120]}_{id}.{extension}",
+        isInstagramPost(rawUrl) ? "{num:03}_{media_id}.{extension}" : "{title[:120]}_{id}.{extension}",
         "--",
         rawUrl,
     ];
@@ -106,10 +107,15 @@ export async function downloadWithGalleryDl(rawUrl, attemptDir, options = {}) {
         processError = error;
     }
 
-    const artifact = await recoverArtifact(attemptDir, {
+    if (isInstagramPost(rawUrl) && processError) {
+        throw collectionFailure(new DownloadMethodError("gallery-dl", processMessage(processError)));
+    }
+    const recover = isInstagramPost(rawUrl) ? recoverMediaCollection : recoverArtifact;
+    const artifact = await recover(attemptDir, {
         outputType: options.outputType,
         maxBytes: options.maxBytes,
         signal: options.signal,
+        onCollection: options.onCollection,
     });
     if (artifact) {
         return {

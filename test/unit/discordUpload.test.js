@@ -18,6 +18,42 @@ async function close(server) {
     await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
 }
 
+test("streams every carousel part to a known followup message", async (t) => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-upload-album-"));
+    t.after(() => fs.rm(dir, { recursive: true, force: true }));
+    const files = [];
+    for (const [i, contents] of ["first-media", "second-media", "third-media"].entries()) {
+        const filePath = path.join(dir, `${i}.jpg`);
+        await fs.writeFile(filePath, contents);
+        files.push({ filePath, fileName: `${i}.jpg`, sizeBytes: contents.length });
+    }
+    let body;
+    let requestPath;
+    let requestMethod;
+    const server = http.createServer(async (request, response) => {
+        requestPath = request.url;
+        requestMethod = request.method;
+        const chunks = [];
+        for await (const chunk of request) chunks.push(chunk);
+        body = Buffer.concat(chunks);
+        assert.equal(body.length, Number(request.headers["content-length"]));
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end("{}");
+    });
+    const port = await listen(server);
+    t.after(() => close(server));
+    const upload = createDiscordUploader({ apiBaseUrl: `http://127.0.0.1:${port}/api/v10/` });
+    await upload(
+        { applicationId: "123456789", token: "interaction-token" },
+        { files, content: "Ready" },
+        { messageId: "123456789012345678" },
+    );
+    assert.equal(requestMethod, "PATCH");
+    assert.ok(requestPath.endsWith("/messages/123456789012345678"));
+    for (let i = 0; i < 3; i++) assert.ok(body.includes(Buffer.from(`name="files[${i}]"`)));
+    for (const value of ["first-media", "second-media", "third-media"]) assert.ok(body.includes(Buffer.from(value)));
+});
+
 test("streams a large Discord multipart upload with bounded memory", async (t) => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-upload-"));
     const filePath = path.join(dir, "large.bin");
@@ -56,7 +92,11 @@ test("streams a large Discord multipart upload with bounded memory", async (t) =
     const port = await listen(server);
     t.after(() => close(server));
 
-    const upload = createDiscordUploader({ apiBaseUrl: `http://127.0.0.1:${port}/api/v10/`, timeoutMs: 30_000 });
+    const upload = createDiscordUploader({
+        apiBaseUrl: `http://127.0.0.1:${port}/api/v10/`,
+        timeoutMs: 30_000,
+        maxRequestBytes: fileSize + 1024 * 1024,
+    });
     const baselineRss = process.memoryUsage().rss;
     let peakRss = baselineRss;
     const sampler = setInterval(() => {
@@ -139,7 +179,10 @@ test("preserves retry metadata when Discord rejects an upload before reading it"
     const port = await listen(server);
     t.after(() => close(server));
 
-    const upload = createDiscordUploader({ apiBaseUrl: `http://127.0.0.1:${port}/api/v10/` });
+    const upload = createDiscordUploader({
+        apiBaseUrl: `http://127.0.0.1:${port}/api/v10/`,
+        maxRequestBytes: 65 * 1024 * 1024,
+    });
     await assert.rejects(
         upload(
             { applicationId: "123456789", token: "secret-token" },

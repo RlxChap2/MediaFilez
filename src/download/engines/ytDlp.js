@@ -5,6 +5,7 @@ import { config } from "../../config.js";
 import { DownloadMethodError, userError } from "../../utils/errors.js";
 import { ProcessExecutionError, runProcess } from "../../utils/process.js";
 import { recoverArtifact } from "../artifact.js";
+import { isInstagramPost, recoverMediaCollection, collectionFailure, MAX_COLLECTION_ITEMS } from "../collection.js";
 import { formatBytes } from "../../utils/format.js";
 import { resolveFFmpegPaths } from "../../utils/ffmpeg.js";
 import { ytDlpFormatSelector } from "../videoQuality.js";
@@ -121,7 +122,9 @@ export async function downloadWithYtDlp(rawUrl, attemptDir, options = {}) {
     const cookieFile = await prepareCookieFile(attemptDir, rawUrl);
     const args = [
         "--no-config",
-        "--no-playlist",
+        ...(isInstagramPost(rawUrl)
+            ? ["--yes-playlist", "--playlist-end", String(MAX_COLLECTION_ITEMS + 1)]
+            : ["--no-playlist"]),
         "--no-warnings",
         "--newline",
         "--windows-filenames",
@@ -150,7 +153,10 @@ export async function downloadWithYtDlp(rawUrl, attemptDir, options = {}) {
         "--print",
         "after_move:filepath",
         "--output",
-        path.join(attemptDir, "%(title).120B_%(id).40B.%(ext)s"),
+        path.join(
+            attemptDir,
+            `${isInstagramPost(rawUrl) ? "%(playlist_index)03d_" : ""}%(title).120B_%(id).40B.%(ext)s`,
+        ),
     ];
     if (config.ytdlpImpersonate) args.push("--impersonate", config.ytdlpImpersonate);
     if (cookieFile) args.push("--cookies", cookieFile);
@@ -179,7 +185,16 @@ export async function downloadWithYtDlp(rawUrl, attemptDir, options = {}) {
         processError = error;
     }
 
-    const artifact = await recoverArtifact(attemptDir, { outputType, maxBytes, signal: options.signal });
+    if (isInstagramPost(rawUrl) && processError) {
+        throw collectionFailure(new DownloadMethodError("yt-dlp", cleanError(processError), { cause: processError }));
+    }
+    const recover = isInstagramPost(rawUrl) ? recoverMediaCollection : recoverArtifact;
+    const artifact = await recover(attemptDir, {
+        outputType,
+        maxBytes,
+        signal: options.signal,
+        onCollection: options.onCollection,
+    });
     if (artifact) {
         return {
             ...artifact,

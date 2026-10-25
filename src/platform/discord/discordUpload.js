@@ -7,6 +7,7 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { config } from "../../config.js";
+import { MAX_DISCORD_ATTACHMENTS, MAX_DISCORD_REQUEST_BYTES } from "./attachmentBatches.js";
 
 const DISCORD_API_BASE_URL = "https://discord.com/api/v10/";
 const MAX_RESPONSE_BYTES = 1024 * 1024;
@@ -66,11 +67,11 @@ function encodedFileName(value) {
  * @param {string} fileName - The attachment filename.
  * @returns {{prefix: Buffer, suffix: Buffer}} The multipart prefix and closing boundary buffers.
  */
-function multipartParts(boundary, payload, fileName) {
+function multipartParts(boundary, payload, files) {
     const message = {
         content: payload.content,
         allowed_mentions: { parse: [] },
-        attachments: [{ id: 0, filename: fileName }],
+        attachments: files.map((file, id) => ({ id, filename: file.fileName })),
     };
     if (payload.components) message.components = payload.components;
     const payloadJson = JSON.stringify(message);
@@ -78,14 +79,19 @@ function multipartParts(boundary, payload, fileName) {
         `--${boundary}\r\n` +
             'Content-Disposition: form-data; name="payload_json"\r\n' +
             "Content-Type: application/json\r\n\r\n" +
-            `${payloadJson}\r\n` +
-            `--${boundary}\r\n` +
-            `Content-Disposition: form-data; name="files[0]"; filename="${safeHeaderFileName(fileName)}"; filename*=UTF-8''${encodedFileName(fileName)}\r\n` +
-            "Content-Type: application/octet-stream\r\n\r\n",
+            `${payloadJson}\r\n`,
         "utf8",
     );
-    const suffix = Buffer.from(`\r\n--${boundary}--\r\n`, "utf8");
-    return { prefix, suffix };
+    const parts = files.map((file, index) =>
+        Buffer.from(
+            `--${boundary}\r\n` +
+                `Content-Disposition: form-data; name="files[${index}]"; filename="${safeHeaderFileName(file.fileName)}"; filename*=UTF-8''${encodedFileName(file.fileName)}\r\n` +
+                "Content-Type: application/octet-stream\r\n\r\n",
+            "utf8",
+        ),
+    );
+    const suffix = Buffer.from(`--${boundary}--\r\n`, "utf8");
+    return { prefix, parts, suffix };
 }
 
 /**
@@ -192,18 +198,37 @@ export function createDiscordUploader(options = {}) {
             throw new TypeError("The Discord interaction does not contain a valid application ID and token.");
         }
 
-        const stat = await fsPromises.stat(payload.filePath);
-        if (!stat.isFile() || (Number.isFinite(payload.sizeBytes) && stat.size !== payload.sizeBytes)) {
-            throw new DiscordUploadError("The prepared attachment changed before it could be uploaded.", {
-                code: "ATTACHMENT_CHANGED",
+        const files = payload.files ?? [payload];
+        if (!Array.isArray(files) || !files.length || files.length > MAX_DISCORD_ATTACHMENTS) {
+            throw new DiscordUploadError("Discord accepts at most 10 attachments per message.", {
+                code: "TOO_MANY_ATTACHMENTS",
             });
+        }
+        const sizes = [];
+        for (const file of files) {
+            const stat = await fsPromises.stat(file.filePath);
+            if (!stat.isFile() || (Number.isFinite(file.sizeBytes) && stat.size !== file.sizeBytes)) {
+                throw new DiscordUploadError("The prepared attachment changed before it could be uploaded.", {
+                    code: "ATTACHMENT_CHANGED",
+                });
+            }
+            sizes.push(stat.size);
         }
 
         const boundary = `MediaFilez-${crypto.randomBytes(18).toString("hex")}`;
-        const { prefix, suffix } = multipartParts(boundary, payload, payload.fileName);
-        const contentLength = prefix.length + stat.size + suffix.length;
+        const { prefix, parts, suffix } = multipartParts(boundary, payload, files);
+        const contentLength =
+            prefix.length + suffix.length + parts.reduce((sum, part, index) => sum + part.length + sizes[index] + 2, 0);
+        if (contentLength > (options.maxRequestBytes ?? MAX_DISCORD_REQUEST_BYTES)) {
+            throw new DiscordUploadError("The Discord multipart request exceeds its size limit.", {
+                code: "DISCORD_UPLOAD_TOO_LARGE",
+            });
+        }
+        const messageId = requestOptions.messageId ?? "@original";
+        if (messageId !== "@original" && !/^\d{1,20}$/.test(messageId))
+            throw new TypeError("Invalid Discord reply message ID.");
         const endpoint = new URL(
-            `webhooks/${encodeURIComponent(applicationId)}/${encodeURIComponent(interactionToken)}/messages/@original`,
+            `webhooks/${encodeURIComponent(applicationId)}/${encodeURIComponent(interactionToken)}/messages/${messageId}`,
             apiBaseUrl,
         );
         const timeoutSignal = AbortSignal.timeout(timeoutMs);
@@ -220,7 +245,11 @@ export function createDiscordUploader(options = {}) {
         });
         async function* body() {
             yield prefix;
-            yield* fs.createReadStream(payload.filePath);
+            for (const [index, file] of files.entries()) {
+                yield parts[index];
+                yield* fs.createReadStream(file.filePath);
+                yield Buffer.from("\r\n");
+            }
             yield suffix;
         }
 

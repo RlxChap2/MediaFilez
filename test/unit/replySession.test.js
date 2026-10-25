@@ -16,6 +16,94 @@ async function fixture(t) {
 
 const details = { method: "test", downloadMs: 10, processMs: 2, uploadTargetBytes: 25 * 1024 * 1024 };
 
+test("sends all sixteen files using known message IDs and preserves private replies", async (t) => {
+    const original = await fixture(t);
+    const outputs = Array.from({ length: 16 }, (_, i) => ({ ...original, fileName: `${i}.jpg` }));
+    const uploads = [];
+    const placeholders = [];
+    const interaction = {
+        ephemeral: true,
+        editReply: async () => {},
+        fetchReply: async () => ({ attachments: new Map() }),
+        webhook: { fetchMessage: async () => ({ attachments: new Map() }), editMessage: async () => {} },
+        followUp: async (payload) => {
+            placeholders.push(payload);
+            return { id: "123456789012345678" };
+        },
+    };
+    const reply = new ReplySession(interaction, {
+        upload: async (_interaction, payload, options) => uploads.push({ payload, options }),
+    });
+    await reply.commitMany(outputs, details);
+    assert.deepEqual(
+        uploads.map(({ payload }) => payload.files.length),
+        [10, 6],
+    );
+    assert.deepEqual(
+        uploads.flatMap(({ payload }) => payload.files),
+        outputs,
+    );
+    assert.deepEqual(
+        uploads.map(({ options }) => options.messageId),
+        ["@original", "123456789012345678"],
+    );
+    assert.equal(placeholders[0].flags, 64);
+    assert.equal(placeholders[0].files, undefined);
+});
+
+test("does not erase confirmed files when a later carousel message fails", async (t) => {
+    const original = await fixture(t);
+    const outputs = Array.from({ length: 16 }, (_, i) => ({ ...original, fileName: `${i}.jpg` }));
+    const edits = [];
+    let uploads = 0;
+    const interaction = {
+        editReply: async (payload) => edits.push(payload),
+        fetchReply: async () => ({ attachments: new Map() }),
+        webhook: { fetchMessage: async () => ({ attachments: new Map() }), editMessage: async () => {} },
+        followUp: async () => ({ id: "123456789012345678" }),
+    };
+    const reply = new ReplySession(interaction, {
+        upload: async () => {
+            if (++uploads === 2) throw new Error("rejected");
+        },
+    });
+    await assert.rejects(reply.commitMany(outputs, details), (error) => error.responseLocked === true);
+    assert.equal(uploads, 2);
+    assert.match(edits[0].content, /10\/16 files confirmed/);
+    assert.equal(edits[0].files, undefined);
+    await reply.fail(new Error("late error"));
+    assert.equal(edits.length, 1);
+});
+
+test("requires every attachment when recovering a lost carousel acknowledgement", async (t) => {
+    const original = await fixture(t);
+    const outputs = [original, { ...original, fileName: "second.jpg" }];
+    let uploads = 0;
+    const interaction = {
+        editReply: async () => {},
+        fetchReply: async () => ({ attachments: new Map([["1", { name: original.fileName, size: 5 }]]) }),
+    };
+    const reply = new ReplySession(interaction, {
+        uploadAttempts: 2,
+        wait: async () => true,
+        upload: async () => {
+            if (++uploads === 1) throw Object.assign(new Error("reset"), { code: "ECONNRESET" });
+        },
+    });
+    await reply.commit(outputs, details);
+    assert.equal(uploads, 2);
+    assert.equal(reply.state, "committed");
+});
+
+test("rejects an oversized user-only carousel before uploading any files", async () => {
+    let uploads = 0;
+    const interaction = { authorizingIntegrationOwners: { userId: "123" } };
+    const reply = new ReplySession(interaction, { upload: async () => uploads++ });
+    const outputs = Array.from({ length: 7 }, (_, i) => ({ fileName: `${i}.jpg`, sizeBytes: 24 * 1024 * 1024 }));
+    await assert.rejects(reply.commitMany(outputs, details), { code: "TOO_MANY_ATTACHMENTS" });
+    assert.equal(uploads, 0);
+});
+
 async function uploadThroughInteraction(interaction, payload) {
     await interaction.editReply({ content: payload.content, components: payload.components, files: [payload] });
 }
