@@ -6,6 +6,7 @@ const NOTE_CODES = new Map([
     ["transcoded to fit Discord", "tf"],
     ["downloaded as audio", "da"],
     ["extracted as MP3", "mp3"],
+    ["extracted original audio", "oa"],
     ["extracted from the video", "ev"],
     ["compressed to fit Discord", "cf"],
     ["transcoded to fit Discord; compressed to fit Discord", "tcf"],

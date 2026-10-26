@@ -19,12 +19,12 @@ See Discord's [message request limits](https://docs.discord.com/developers/resou
 
 Each output value changes validation and processing:
 
-| Output              | Result                                                                                   |
-| ------------------- | ---------------------------------------------------------------------------------------- |
-| Auto (detect media) | Accepts the first validated video, audio, or image and uses the matching processing path |
-| Video               | Returns playable video                                                                   |
-| Image / video frame | Returns a source image, page thumbnail, or a frame extracted from video                  |
-| Audio               | Returns source audio or extracts an MP3 audio track from video                           |
+| Output              | Result                                                                                                                                         |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Auto (detect media) | Accepts the first validated video, audio, or image and uses the matching processing path                                                       |
+| Video               | Returns playable video                                                                                                                         |
+| Image / video frame | Returns a source image, page thumbnail, or a frame extracted from video                                                                        |
+| Audio               | Preserves source audio and copies AAC, ALAC or MP3 tracks from video without re-encoding; converts other codecs or fits oversized audio to MP3 |
 
 Private results use Discord's ephemeral interaction reply, so they do not depend on the user's DM settings. An operator can make every guild result private with `PUBLIC_REPLIES_IN_GUILDS=false`.
 

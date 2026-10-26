@@ -128,6 +128,7 @@ export async function getMediaInfo(inputPath, options = {}) {
         height: Number.parseInt(videoStream?.height || "0", 10),
         videoBitrate: Number.parseInt(videoStream?.bit_rate || "0", 10),
         audioBitrate: Number.parseInt(audioStream?.bit_rate || "0", 10),
+        audioCodec: audioStream?.codec_name || null,
         formatName: format.format_name || "unknown",
     };
 }
@@ -161,6 +162,18 @@ function audioBitrateForTarget(duration, targetSizeBytes) {
     return Math.min(192, Math.max(48, kbps));
 }
 
+export async function extractOriginalAudio(inputPath, outputDir, options = {}) {
+    const info = await getMediaInfo(inputPath, options);
+    if (!info.hasAudio) throw userError("The downloaded media does not contain an audio stream.", "NO_AUDIO");
+    const extension = { aac: "m4a", alac: "m4a", mp3: "mp3" }[info.audioCodec];
+    if (!extension) return null;
+    let outputPath = path.join(outputDir, `extracted-audio.${extension}`);
+    if (path.resolve(outputPath) === path.resolve(inputPath))
+        outputPath = path.join(outputDir, `extracted-audio-copy.${extension}`);
+    await runFFmpeg(["-i", inputPath, "-map", "0:a:0", "-vn", "-c:a", "copy", "-y", outputPath], options);
+    return outputPath;
+}
+
 /**
  * Extracts the audio stream as MP3 using a bitrate derived from the target size.
  * @param {string} inputPath - Path to the source media file.
@@ -190,7 +203,21 @@ export async function extractAudio(inputPath, outputDir, targetSizeBytes, option
     }
 
     await runFFmpeg(
-        ["-i", inputPath, "-vn", "-c:a", "libmp3lame", "-b:a", `${kbps}k`, "-ar", "44100", "-y", outputPath],
+        [
+            "-i",
+            inputPath,
+            "-map",
+            "0:a:0",
+            "-vn",
+            "-c:a",
+            "libmp3lame",
+            "-b:a",
+            `${kbps}k`,
+            "-ar",
+            "44100",
+            "-y",
+            outputPath,
+        ],
         options,
     );
 

@@ -7,6 +7,7 @@ import {
     compressImage,
     compressVideo,
     extractAudio,
+    extractOriginalAudio,
     extractThumbnail,
     getMediaInfo,
     requireFFmpeg,
@@ -91,16 +92,31 @@ export async function prepareMediaForDiscord(download, options) {
                 );
             }
             await requireFFmpeg(canSendOriginal ? "audio fitting" : "audio extraction");
-            await onStatus?.({
-                phase: "processing",
-                detail: canSendOriginal ? "Fitting audio to Discord" : "Extracting audio",
-            });
-            outputPath = await extractAudio(download.filePath, tempDir, Math.floor(maxAttachmentBytes * 0.98), {
-                signal,
-                outputFileName: canSendOriginal ? "fit-audio.mp3" : "audio.mp3",
-            });
-            outputName = canSendOriginal ? "fit-audio.mp3" : "audio.mp3";
-            note = canSendOriginal ? "transcoded to fit Discord" : "extracted as MP3";
+            const original = canSendOriginal
+                ? null
+                : await extractOriginalAudio(download.filePath, tempDir, { signal });
+            if (original && (await fs.stat(original)).size <= maxAttachmentBytes) {
+                outputPath = original;
+                outputName = path.basename(original);
+                note = "extracted original audio";
+            } else {
+                if (original && !allowCompression) {
+                    throw userError(
+                        "The original audio exceeds the Discord upload limit. Enable file fitting to reduce its size.",
+                        "FILE_TOO_LARGE",
+                    );
+                }
+                await onStatus?.({
+                    phase: "processing",
+                    detail: canSendOriginal ? "Fitting audio to Discord" : "Extracting audio",
+                });
+                outputPath = await extractAudio(download.filePath, tempDir, Math.floor(maxAttachmentBytes * 0.98), {
+                    signal,
+                    outputFileName: canSendOriginal ? "fit-audio.mp3" : "audio.mp3",
+                });
+                outputName = canSendOriginal ? "fit-audio.mp3" : "audio.mp3";
+                note = canSendOriginal ? "transcoded to fit Discord" : "extracted as MP3";
+            }
         }
     }
 
