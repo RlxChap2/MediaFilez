@@ -6,6 +6,89 @@ import test from "node:test";
 import { prepareMediaForDiscord } from "../../src/media/processor.js";
 import { checkFFmpeg, compressImage, extractThumbnail, getMediaInfo, runFFmpeg } from "../../src/utils/ffmpeg.js";
 
+test("extracts AAC audio without changing its encoded samples", async (t) => {
+    if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-aac-copy-"));
+    t.after(() => fs.rm(dir, { recursive: true, force: true }));
+    const input = path.join(dir, "source.mp4");
+    await runFFmpeg([
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=blue:s=64x64:d=2",
+        "-f",
+        "lavfi",
+        "-i",
+        "sine=frequency=440:duration=2",
+        "-c:v",
+        "libx264",
+        "-c:a",
+        "aac",
+        "-shortest",
+        "-y",
+        input,
+    ]);
+    const output = await prepareMediaForDiscord(
+        {
+            filePath: input,
+            fileName: "source.mp4",
+            sizeBytes: (await fs.stat(input)).size,
+            mediaKind: "video",
+            extension: "mp4",
+        },
+        { outputType: "audio", tempDir: dir, maxAttachmentBytes: 10 * 1024 * 1024, allowCompression: true },
+    );
+    assert.equal(output.extension, "m4a");
+    const encodedHash = async (file) =>
+        (
+            await runFFmpeg(["-i", file, "-map", "0:a:0", "-c:a", "copy", "-f", "streamhash", "-hash", "sha256", "-"])
+        ).stdout.trim();
+    assert.equal(await encodedHash(output.filePath), await encodedHash(input));
+    const info = await getMediaInfo(output.filePath);
+    assert.equal(info.hasVideo, false);
+    assert.equal(info.audioCodec, "aac");
+});
+
+test("fits oversized AAC only when compression is enabled", async (t) => {
+    if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-aac-fit-"));
+    t.after(() => fs.rm(dir, { recursive: true, force: true }));
+    const input = path.join(dir, "source.mp4");
+    await runFFmpeg([
+        "-f",
+        "lavfi",
+        "-i",
+        "color=c=blue:s=64x64:d=6",
+        "-f",
+        "lavfi",
+        "-i",
+        "anoisesrc=duration=6:sample_rate=44100:seed=1",
+        "-c:v",
+        "libx264",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-shortest",
+        "-y",
+        input,
+    ]);
+    const download = {
+        filePath: input,
+        fileName: "source.mp4",
+        sizeBytes: (await fs.stat(input)).size,
+        mediaKind: "video",
+        extension: "mp4",
+    };
+    const options = { outputType: "audio", tempDir: dir, maxAttachmentBytes: 48 * 1024 };
+    await assert.rejects(prepareMediaForDiscord(download, { ...options, allowCompression: false }), {
+        code: "FILE_TOO_LARGE",
+    });
+    const output = await prepareMediaForDiscord(download, { ...options, allowCompression: true });
+    assert.equal(output.extension, "mp3");
+    assert.ok(output.sizeBytes <= options.maxAttachmentBytes);
+});
+
 test("extracts an image from a sub-second video", async (t) => {
     if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-short-video-"));

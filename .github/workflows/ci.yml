@@ -43,6 +43,7 @@ jobs:
               run: pnpm install --frozen-lockfile
               env:
                   GALLERY_DL_AUTO_INSTALL: "false"
+                  YOUTUBE_DL_SKIP_DOWNLOAD: "true"
 
             - name: Run checks
               run: pnpm run check
@@ -73,3 +74,6 @@ jobs:
 
             - name: Build production image
               run: docker build --tag mediafilez:ci .
+
+            - name: Verify downloader in production image
+              run: docker run --rm --entrypoint sh mediafilez:ci -c 'test -x "$YTDLP_PATH" && "$YTDLP_PATH" --version'
