@@ -24,9 +24,11 @@ const PUBLIC_DELIVERY_PERMISSIONS = [
 
 function missingGuildDeliveryPermissions(interaction, publicRepliesInGuilds = config.publicRepliesInGuilds) {
     if (!publicRepliesInGuilds || !interaction.inGuild()) return [];
+
     if (!interaction.authorizingIntegrationOwners?.guildId) return [];
 
     const required = [...PUBLIC_DELIVERY_PERMISSIONS];
+
     if (interaction.channel?.isThread()) {
         required.push([PermissionFlagsBits.SendMessagesInThreads, "Send Messages in Threads"]);
     }
@@ -36,7 +38,9 @@ function missingGuildDeliveryPermissions(interaction, publicRepliesInGuilds = co
 
 function requireGuildDeliveryPermissions(interaction) {
     const missing = missingGuildDeliveryPermissions(interaction);
+
     if (missing.length === 0) return;
+
     throw userError(
         `MediaFilez is missing Discord permissions in this channel: ${missing.join(", ")}. Ask a server administrator to update the bot role or use the command in a DM.`,
         "MISSING_DISCORD_PERMISSIONS",
@@ -45,7 +49,9 @@ function requireGuildDeliveryPermissions(interaction) {
 
 function privateReplyForInteraction(interaction, publicRepliesInGuilds = config.publicRepliesInGuilds) {
     const requestedPrivate = interaction.options.getBoolean("private") ?? false;
+
     if (requestedPrivate) return true;
+
     return interaction.inGuild() && !publicRepliesInGuilds;
 }
 
@@ -59,17 +65,20 @@ function uploadTargetBytesForInteraction(interaction, configuredTargetBytes = co
 
 function acquireUserSlot(userId) {
     const active = activeByUser.get(userId) ?? 0;
+
     if (active >= config.maxConcurrentJobsPerUser) {
         throw userError(
             `You already have ${active} media job${active === 1 ? "" : "s"} running or queued. Wait for one to finish.`,
             "USER_BUSY",
         );
     }
+
     activeByUser.set(userId, active + 1);
 }
 
 function releaseUserSlot(userId) {
     const active = activeByUser.get(userId) ?? 0;
+
     if (active <= 1) activeByUser.delete(userId);
     else activeByUser.set(userId, active - 1);
 }
@@ -118,6 +127,7 @@ async function runMediaJob(interaction, reply, request, options = {}) {
         const items = download.items ?? [download];
         const outputs = [];
         const itemLimit = carouselUploadTarget(interaction, items.length, uploadTargetBytes);
+
         for (const [index, item] of items.entries()) {
             signal.throwIfAborted();
             const processDir = items.length > 1 ? path.join(tempDir, `process-${index + 1}`) : tempDir;
@@ -133,6 +143,7 @@ async function runMediaJob(interaction, reply, request, options = {}) {
                 }),
             );
         }
+
         const output = outputs[0];
         const processMs = performance.now() - processStarted;
         log.info(
@@ -164,20 +175,24 @@ async function runMediaJob(interaction, reply, request, options = {}) {
             : deadlineSignal.aborted && !isUserFacingError(caught)
               ? jobTimeoutError(caught)
               : caught;
+
         if (isUserFacingError(error)) {
             log.warn(`Media job ended for ${interaction.user.tag} (${error.code}): ${error.message}`);
         } else {
             log.error(`Media job failed for ${interaction.user.tag}:`, error.stack || error.message);
         }
+
         await reply.fail(error);
     } finally {
         if (deadlineTimeout) clearTimeout(deadlineTimeout);
+
         await cleanupTempDir(tempDir);
     }
 }
 
 export async function enqueue(interaction, reply, request, options = {}) {
     const jobQueue = options.queue ?? queue;
+
     if (jobQueue.size >= config.maxQueueSize)
         throw userError("The download queue is full. Try again in a minute.", "QUEUE_FULL");
 
@@ -205,6 +220,7 @@ export async function enqueue(interaction, reply, request, options = {}) {
                     () => runController.abort(new DOMException("The media job timed out.", "TimeoutError")),
                     remainingMs,
                 );
+
                 try {
                     await runMediaJob(interaction, reply, request, { signal: runController.signal });
                 } finally {
@@ -225,13 +241,17 @@ export async function enqueue(interaction, reply, request, options = {}) {
  */
 export async function handleMediaCommand(interaction) {
     const privateReply = privateReplyForInteraction(interaction);
+
     if (!privateReply) requireGuildDeliveryPermissions(interaction);
+
     const deferOptions = privateReply ? { flags: MessageFlags.Ephemeral } : {};
     await interaction.deferReply(deferOptions);
     log.info(`/media from ${interaction.user.tag} context=${interaction.context ?? "unknown"}`);
 
     const outputType = interaction.options.getString("output", true);
+
     if (!OUTPUT_TYPES.has(outputType)) throw userError("Unsupported output type.", "BAD_OUTPUT_TYPE");
+
     const reply = new ReplySession(interaction);
 
     try {
@@ -243,6 +263,7 @@ export async function handleMediaCommand(interaction) {
     } catch (error) {
         if (isUserFacingError(error)) log.warn(`Could not queue media job (${error.code}): ${error.message}`);
         else log.error(`Could not queue media job: ${error.stack || error.message}`);
+
         await reply.fail(error);
     }
 }

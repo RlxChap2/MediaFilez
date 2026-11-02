@@ -11,6 +11,7 @@ async function listen(server) {
         server.once("error", reject);
         server.listen(0, "127.0.0.1", resolve);
     });
+
     return server.address().port;
 }
 
@@ -22,11 +23,13 @@ test("streams every carousel part to a known followup message", async (t) => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-upload-album-"));
     t.after(() => fs.rm(dir, { recursive: true, force: true }));
     const files = [];
+
     for (const [i, contents] of ["first-media", "second-media", "third-media"].entries()) {
         const filePath = path.join(dir, `${i}.jpg`);
         await fs.writeFile(filePath, contents);
         files.push({ filePath, fileName: `${i}.jpg`, sizeBytes: contents.length });
     }
+
     let body;
     let requestPath;
     let requestMethod;
@@ -34,7 +37,9 @@ test("streams every carousel part to a known followup message", async (t) => {
         requestPath = request.url;
         requestMethod = request.method;
         const chunks = [];
+
         for await (const chunk of request) chunks.push(chunk);
+
         body = Buffer.concat(chunks);
         assert.equal(body.length, Number(request.headers["content-length"]));
         response.writeHead(200, { "content-type": "application/json" });
@@ -50,7 +55,9 @@ test("streams every carousel part to a known followup message", async (t) => {
     );
     assert.equal(requestMethod, "PATCH");
     assert.ok(requestPath.endsWith("/messages/123456789012345678"));
+
     for (let i = 0; i < 3; i++) assert.ok(body.includes(Buffer.from(`name="files[${i}]"`)));
+
     for (const value of ["first-media", "second-media", "third-media"]) assert.ok(body.includes(Buffer.from(value)));
 });
 
@@ -75,10 +82,13 @@ test("streams a large Discord multipart upload with bounded memory", async (t) =
         request.on("data", (chunk) => {
             chunks += 1;
             receivedBytes += chunk.length;
+
             if (firstBytes.length < 8 * 1024) {
                 firstBytes = Buffer.concat([firstBytes, chunk]).subarray(0, 8 * 1024);
             }
+
             lastBytes = Buffer.concat([lastBytes, chunk]).subarray(-2 * 1024);
+
             if (chunks % 8 === 0) {
                 request.pause();
                 setTimeout(() => request.resume(), 1);
@@ -159,6 +169,7 @@ test("returns bounded Discord API errors without exposing the interaction token"
             assert.equal(error.status, 413);
             assert.equal(error.code, 40005);
             assert.doesNotMatch(error.message, /secret-token/);
+
             return true;
         },
     );
@@ -192,6 +203,7 @@ test("preserves retry metadata when Discord rejects an upload before reading it"
             assert.equal(error.status, 429);
             assert.equal(error.retryAfterMs, 2_000);
             assert.doesNotMatch(error.message, /secret-token/);
+
             return true;
         },
     );

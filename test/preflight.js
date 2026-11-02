@@ -15,6 +15,7 @@ async function commandOk(command, args = ["--version"]) {
             windowsHide: true,
             maxBuffer: 1024 * 1024,
         });
+
         return { ok: true, detail: (stdout || stderr).split(/\r?\n/)[0] };
     } catch (error) {
         return { ok: false, detail: error.code === "ENOENT" ? "not found on PATH" : error.message };
@@ -24,6 +25,7 @@ async function commandOk(command, args = ["--version"]) {
 async function ytDlpOk() {
     const command = resolveYtDlpPath();
     const version = await commandOk(command);
+
     if (!version.ok || !config.ytdlpImpersonate) return version;
 
     try {
@@ -34,6 +36,7 @@ async function ytDlpOk() {
         });
         const target = config.ytdlpImpersonate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
         const available = new RegExp(`^${target}(?:-|\\s)`, "im").test(stdout || stderr);
+
         return {
             ok: available,
             detail: `${version.detail}; ${config.ytdlpImpersonate} impersonation ${available ? "ready" : "unavailable"}`,
@@ -48,10 +51,13 @@ async function cookieFileOk() {
         const browser = config.ytdlpCookiesFromBrowser
             ? `browser extraction: ${config.ytdlpCookiesFromBrowser}`
             : "not configured";
+
         return { ok: true, detail: browser };
     }
+
     try {
         const stat = await fs.stat(config.mediaCookiesFile);
+
         return { ok: stat.isFile() && stat.size > 0, detail: `${stat.size} bytes` };
     } catch (error) {
         return { ok: false, detail: error.code === "ENOENT" ? "file not found" : error.message };
@@ -60,6 +66,7 @@ async function cookieFileOk() {
 
 async function cobaltOk() {
     if (config.cobaltApiEndpoints.length === 0) return { ok: true, detail: "disabled" };
+
     const knownSharedHosts = new Set([
         "rue-cobalt.xenon.zone",
         "fox.kittycat.boo",
@@ -69,9 +76,12 @@ async function cobaltOk() {
     ]);
     const results = [];
     const shared = [];
+
     for (const endpoint of config.cobaltApiEndpoints.slice(0, config.cobaltMaxEndpoints)) {
         const host = new URL(endpoint).hostname;
+
         if (knownSharedHosts.has(host)) shared.push(host);
+
         try {
             const response = await fetch(endpoint, { signal: AbortSignal.timeout(5_000) });
             results.push(`${host}: HTTP ${response.status}`);
@@ -79,15 +89,18 @@ async function cobaltOk() {
             results.push(`${host}: ${error.message}`);
         }
     }
+
     const detail = shared.length
         ? `${results.join(" | ")} | replace shared instance(s) with a private Cobalt: ${shared.join(", ")}`
         : results.join(" | ");
+
     return { ok: results.some((result) => /HTTP 2\d\d/.test(result)) && shared.length === 0, detail };
 }
 
 function printResult(name, result, required = true) {
     const mark = result.ok ? "OK" : required ? "FAIL" : "WARN";
     console.log(`${mark}\t${name}\t${result.detail}`);
+
     return result.ok || !required;
 }
 
@@ -110,8 +123,10 @@ const checks = [
 ];
 
 let ok = true;
+
 for (const [name, result, required] of checks) ok = printResult(name, result, required) && ok;
 
 console.log(`INFO\tengine policy\tsequential attempts; artifact validation before fallback`);
 console.log(`INFO\tjob timeout\t${config.jobTimeoutMs}ms with process cancellation`);
+
 if (!ok) process.exitCode = 1;

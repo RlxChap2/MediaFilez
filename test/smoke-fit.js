@@ -5,6 +5,7 @@ import { cleanupTempDir, createRequestTempDir } from "../src/utils/temp.js";
 import { formatBytes } from "../src/utils/format.js";
 
 const url = process.argv.slice(2).find((argument) => argument !== "--");
+
 if (!url) throw new Error("Usage: pnpm run smoke:fit -- <media URL>");
 
 const maxAttachmentBytes = Number.parseInt(process.env.SMOKE_UPLOAD_LIMIT_BYTES || "", 10) || 10 * MB;
@@ -15,7 +16,9 @@ let lastProgressBucket = -1;
 function reportStatus(status) {
     const percent = Number.isFinite(status.progress?.percent) ? status.progress.percent : null;
     const progressBucket = percent === null ? -1 : Math.floor(percent / 10);
+
     if (status.phase === lastPhase && progressBucket === lastProgressBucket) return;
+
     lastPhase = status.phase;
     lastProgressBucket = progressBucket;
     const progress = percent === null ? "" : ` ${Math.min(percent, 100).toFixed(1)}%`;

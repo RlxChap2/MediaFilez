@@ -12,6 +12,7 @@ const sampleUrl =
 async function version(command) {
     try {
         const { stdout, stderr } = await execFileAsync(command, ["--version"], { timeout: 10_000, windowsHide: true });
+
         return (stdout || stderr).trim().split(/\r?\n/)[0];
     } catch (error) {
         return error.code === "ENOENT" ? "not installed" : `failed: ${error.message}`;

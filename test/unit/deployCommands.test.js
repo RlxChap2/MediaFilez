@@ -8,14 +8,17 @@ function createRest(existingCommands) {
         calls,
         async get(route) {
             calls.push(["get", route]);
+
             return existingCommands;
         },
         async patch(route, request) {
             calls.push(["patch", route, request]);
+
             return { id: "media-id", ...request.body };
         },
         async post(route, request) {
             calls.push(["post", route, request]);
+
             return { id: "new-media-id", ...request.body };
         },
     };

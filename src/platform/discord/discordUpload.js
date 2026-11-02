@@ -30,10 +30,13 @@ export class DiscordUploadError extends Error {
  */
 function normalizeApiBaseUrl(value) {
     const url = new URL(value);
+
     if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
         throw new TypeError("The Discord API base URL is invalid.");
     }
+
     if (!url.pathname.endsWith("/")) url.pathname += "/";
+
     return url;
 }
 
@@ -45,6 +48,7 @@ function normalizeApiBaseUrl(value) {
 function safeHeaderFileName(value) {
     const baseName = path.basename(String(value || "attachment.bin"));
     const ascii = baseName.replace(/[^\x20-\x7e]|["\\]/g, "_").slice(0, 180);
+
     return ascii || "attachment.bin";
 }
 
@@ -73,7 +77,9 @@ function multipartParts(boundary, payload, files) {
         allowed_mentions: { parse: [] },
         attachments: files.map((file, id) => ({ id, filename: file.fileName })),
     };
+
     if (payload.components) message.components = payload.components;
+
     const payloadJson = JSON.stringify(message);
     const prefix = Buffer.from(
         `--${boundary}\r\n` +
@@ -91,6 +97,7 @@ function multipartParts(boundary, payload, files) {
         ),
     );
     const suffix = Buffer.from(`--${boundary}--\r\n`, "utf8");
+
     return { prefix, parts, suffix };
 }
 
@@ -103,17 +110,22 @@ function multipartParts(boundary, payload, files) {
 async function readResponse(response) {
     const chunks = [];
     let size = 0;
+
     for await (const chunk of response) {
         size += chunk.length;
+
         if (size > MAX_RESPONSE_BYTES) {
             response.destroy();
+
             throw new DiscordUploadError("Discord returned an unexpectedly large upload response.", {
                 status: response.statusCode,
                 code: "DISCORD_RESPONSE_TOO_LARGE",
             });
         }
+
         chunks.push(chunk);
     }
+
     return Buffer.concat(chunks).toString("utf8");
 }
 
@@ -124,6 +136,7 @@ async function readResponse(response) {
  */
 function parseResponseBody(body) {
     if (!body) return null;
+
     try {
         return JSON.parse(body);
     } catch {
@@ -142,6 +155,7 @@ function errorFromResponse(response, body) {
     const status = response.statusCode ?? 0;
     const detail = String(data?.message || response.statusMessage || "upload rejected").slice(0, 500);
     const retryAfterSeconds = Number(data?.retry_after ?? response.headers["retry-after"]);
+
     return new DiscordUploadError(`Discord rejected the upload (${status}): ${detail}`, {
         status,
         code: data?.code,
@@ -159,10 +173,13 @@ function responsePromiseFor(request) {
         request.once("response", async (response) => {
             try {
                 const body = await readResponse(response);
+
                 if (response.statusCode >= 200 && response.statusCode < 300) {
                     resolve(parseResponseBody(body));
+
                     return;
                 }
+
                 reject(errorFromResponse(response, body));
             } catch (error) {
                 reject(error);
@@ -194,24 +211,30 @@ export function createDiscordUploader(options = {}) {
     return async function uploadDiscordReply(interaction, payload, requestOptions = {}) {
         const applicationId = String(interaction.applicationId || interaction.client?.application?.id || "");
         const interactionToken = String(interaction.token || "");
+
         if (!/^\d+$/.test(applicationId) || !interactionToken) {
             throw new TypeError("The Discord interaction does not contain a valid application ID and token.");
         }
 
         const files = payload.files ?? [payload];
+
         if (!Array.isArray(files) || !files.length || files.length > MAX_DISCORD_ATTACHMENTS) {
             throw new DiscordUploadError("Discord accepts at most 10 attachments per message.", {
                 code: "TOO_MANY_ATTACHMENTS",
             });
         }
+
         const sizes = [];
+
         for (const file of files) {
             const stat = await fsPromises.stat(file.filePath);
+
             if (!stat.isFile() || (Number.isFinite(file.sizeBytes) && stat.size !== file.sizeBytes)) {
                 throw new DiscordUploadError("The prepared attachment changed before it could be uploaded.", {
                     code: "ATTACHMENT_CHANGED",
                 });
             }
+
             sizes.push(stat.size);
         }
 
@@ -219,14 +242,18 @@ export function createDiscordUploader(options = {}) {
         const { prefix, parts, suffix } = multipartParts(boundary, payload, files);
         const contentLength =
             prefix.length + suffix.length + parts.reduce((sum, part, index) => sum + part.length + sizes[index] + 2, 0);
+
         if (contentLength > (options.maxRequestBytes ?? MAX_DISCORD_REQUEST_BYTES)) {
             throw new DiscordUploadError("The Discord multipart request exceeds its size limit.", {
                 code: "DISCORD_UPLOAD_TOO_LARGE",
             });
         }
+
         const messageId = requestOptions.messageId ?? "@original";
+
         if (messageId !== "@original" && !/^\d{1,20}$/.test(messageId))
             throw new TypeError("Invalid Discord reply message ID.");
+
         const endpoint = new URL(
             `webhooks/${encodeURIComponent(applicationId)}/${encodeURIComponent(interactionToken)}/messages/${messageId}`,
             apiBaseUrl,
@@ -245,11 +272,13 @@ export function createDiscordUploader(options = {}) {
         });
         async function* body() {
             yield prefix;
+
             for (const [index, file] of files.entries()) {
                 yield parts[index];
                 yield* fs.createReadStream(file.filePath);
                 yield Buffer.from("\r\n");
             }
+
             yield suffix;
         }
 
@@ -269,9 +298,13 @@ export function createDiscordUploader(options = {}) {
 
         const uploadOutcome = first.source === "upload" ? first.outcome : await uploadOutcomePromise;
         const responseOutcome = first.source === "response" ? first.outcome : await responseOutcomePromise;
+
         if (responseOutcome.status === "fulfilled") return responseOutcome.value;
+
         if (responseOutcome.reason instanceof DiscordUploadError) throw responseOutcome.reason;
+
         if (uploadOutcome.status === "rejected") throw uploadOutcome.reason;
+
         throw responseOutcome.reason;
     };
 }

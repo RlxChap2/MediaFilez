@@ -11,6 +11,7 @@ async function fixture(t) {
     const filePath = path.join(dir, "result.txt");
     await fs.writeFile(filePath, "media");
     t.after(() => fs.rm(dir, { recursive: true, force: true }));
+
     return { filePath, fileName: "result.txt", sizeBytes: 5 };
 }
 
@@ -28,6 +29,7 @@ test("sends all sixteen files using known message IDs and preserves private repl
         webhook: { fetchMessage: async () => ({ attachments: new Map() }), editMessage: async () => {} },
         followUp: async (payload) => {
             placeholders.push(payload);
+
             return { id: "123456789012345678" };
         },
     };
@@ -216,15 +218,18 @@ test("retries a transient upload only after Discord confirms there is no attachm
     const interaction = {
         editReply: async () => {
             uploadAttempts += 1;
+
             if (uploadAttempts === 1) {
                 const error = new Error("other side closed");
                 error.name = "SocketError";
                 error.code = "UND_ERR_SOCKET";
+
                 throw error;
             }
         },
         fetchReply: async () => {
             verifications += 1;
+
             return { attachments: new Map() };
         },
     };
@@ -251,6 +256,7 @@ test("returns a useful error after verified upload attempts are exhausted", asyn
             const error = new Error("other side closed");
             error.name = "SocketError";
             error.code = "UND_ERR_SOCKET";
+
             throw error;
         },
         fetchReply: async () => ({ attachments: new Map() }),
@@ -284,6 +290,7 @@ test("does not retry an upload after the whole job is cancelled", async (t) => {
         uploadRetryDelayMs: 0,
         upload: async () => {
             uploadAttempts += 1;
+
             throw Object.assign(new Error("upload aborted"), { name: "AbortError" });
         },
         wait: async () => {},
@@ -313,10 +320,12 @@ test("cancels an upload retry wait when the whole job times out", async (t) => {
         uploadAttempts: 3,
         upload: async () => {
             uploadAttempts += 1;
+
             throw Object.assign(new Error("rate limited"), { status: 429, retryAfterMs: 60_000 });
         },
         wait: async (_milliseconds, signal) => {
             markWaitStarted();
+
             return await new Promise((resolve) => {
                 const timer = setTimeout(() => resolve(true), 60_000);
                 signal.addEventListener(

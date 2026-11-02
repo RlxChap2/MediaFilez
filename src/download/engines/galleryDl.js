@@ -14,18 +14,23 @@ import { isInstagramPost, recoverMediaCollection, collectionFailure, MAX_COLLECT
  */
 export function resolveGalleryDlPath() {
     if (config.galleryDlPath) return config.galleryDlPath;
+
     const projectRoot = fileURLToPath(new URL("../../../", import.meta.url));
     const bundledName = process.platform === "win32" ? "gallery-dl.exe" : "gallery-dl";
     const bundledPath = path.join(projectRoot, ".tools", bundledName);
+
     return fsSync.existsSync(bundledPath) ? bundledPath : "gallery-dl";
 }
 
 async function readMetadata(attemptDir) {
     const entries = await fs.readdir(attemptDir, { recursive: true }).catch(() => []);
     const metadataName = entries.find((name) => typeof name === "string" && name.endsWith(".json"));
+
     if (!metadataName) return null;
+
     try {
         const data = JSON.parse(await fs.readFile(path.join(attemptDir, metadataName), "utf8"));
+
         return {
             title: data.title || data.description,
             creator: data.author?.name || data.author || data.username,
@@ -42,10 +47,12 @@ function processMessage(error) {
     if (error?.cause?.code === "ENOENT") {
         return "gallery-dl is unavailable. Run pnpm run tools:install, set GALLERY_DL_PATH, or use Docker.";
     }
+
     const lines = `${error?.stderr || ""}\n${error?.stdout || ""}`
         .split(/\r?\n/)
         .map((line) => line.trim())
         .filter(Boolean);
+
     return lines.findLast((line) => /error|failed|unsupported/i.test(line)) || lines.at(-1) || error.message;
 }
 
@@ -79,7 +86,9 @@ export function galleryDlArgs(rawUrl, attemptDir, options = {}) {
         "--",
         rawUrl,
     ];
+
     if (config.mediaCookiesFile) args.unshift("--cookies", config.mediaCookiesFile);
+
     return args;
 }
 
@@ -96,6 +105,7 @@ export async function downloadWithGalleryDl(rawUrl, attemptDir, options = {}) {
     const args = galleryDlArgs(rawUrl, attemptDir, options);
 
     let processError = null;
+
     try {
         await runProcess(resolveGalleryDlPath(), args, {
             timeoutMs: config.ytdlpTimeoutMs,
@@ -104,12 +114,14 @@ export async function downloadWithGalleryDl(rawUrl, attemptDir, options = {}) {
     } catch (error) {
         if (error instanceof ProcessExecutionError && error.aborted)
             throw Object.assign(new Error("The download was cancelled."), { name: "AbortError" });
+
         processError = error;
     }
 
     if (isInstagramPost(rawUrl) && processError) {
         throw collectionFailure(new DownloadMethodError("gallery-dl", processMessage(processError)));
     }
+
     const recover = isInstagramPost(rawUrl) ? recoverMediaCollection : recoverArtifact;
     const artifact = await recover(attemptDir, {
         outputType: options.outputType,
@@ -117,6 +129,7 @@ export async function downloadWithGalleryDl(rawUrl, attemptDir, options = {}) {
         signal: options.signal,
         onCollection: options.onCollection,
     });
+
     if (artifact) {
         return {
             ...artifact,
@@ -126,6 +139,7 @@ export async function downloadWithGalleryDl(rawUrl, attemptDir, options = {}) {
             recoveredFromProcessError: Boolean(processError),
         };
     }
+
     throw new DownloadMethodError(
         "gallery-dl",
         processError ? processMessage(processError) : "gallery-dl produced no playable file.",

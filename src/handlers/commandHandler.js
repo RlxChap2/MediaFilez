@@ -6,11 +6,13 @@ import { handleNerdInfoButton } from "../platform/discord/nerdInfo.js";
 
 async function sendError(interaction, error) {
     if (error?.responseLocked) return;
+
     const content = `Request failed: ${messageForError(error)}`;
 
     try {
         if (interaction.deferred || interaction.replied) {
             await interaction.editReply({ content, files: [] });
+
             return;
         }
 
@@ -35,10 +37,12 @@ function interactionLabel(interaction) {
 export async function handleCommand(interaction) {
     try {
         if (await handleNerdInfoButton(interaction)) return;
+
         if (!interaction.isChatInputCommand()) return;
 
         if (interaction.commandName === "media") {
             await handleMediaCommand(interaction);
+
             return;
         }
 
@@ -48,15 +52,19 @@ export async function handleCommand(interaction) {
         });
     } catch (error) {
         const label = interactionLabel(interaction);
+
         if (isUnknownInteraction(error)) {
             log.warn(`${label} expired before Discord accepted the initial response.`);
+
             return;
         }
+
         if (isUserFacingError(error)) {
             log.warn(`${label} ended (${error.code}): ${error.message}`);
         } else {
             log.error(`${label} failed:`, error.stack || error.message);
         }
+
         await sendError(interaction, error);
     }
 }
