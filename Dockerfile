@@ -23,10 +23,13 @@ RUN GALLERY_DL_AUTO_INSTALL=false YOUTUBE_DL_SKIP_DOWNLOAD=true pnpm install --p
 
 COPY src ./src
 COPY test ./test
+COPY official-bot ./official-bot
 
 ENV NODE_ENV=production \
     FFMPEG_PATH=/usr/bin/ffmpeg \
     FFPROBE_PATH=/usr/bin/ffprobe \
     YTDLP_PATH=/usr/local/bin/yt-dlp
 
+USER node
+HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=3 CMD ["node", "scripts/healthcheck.mjs"]
 CMD ["node", "src/index.js"]
