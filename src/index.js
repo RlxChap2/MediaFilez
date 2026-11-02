@@ -5,6 +5,9 @@ import { log } from "./utils/logger.js";
 import { checkFFmpeg } from "./utils/ffmpeg.js";
 import { cleanupStaleTempDirs } from "./utils/temp.js";
 import { handleCommand } from "./handlers/commandHandler.js";
+import { writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 requireConfig(["botToken"]);
 await cleanupStaleTempDirs();
@@ -27,6 +30,20 @@ const client = new Client({
         retries: config.discordRestRetries,
     },
 });
+
+// A running process is healthy only while the Discord gateway is ready.
+const healthTimer = setInterval(() => {
+    try {
+        writeFileSync(
+            join(tmpdir(), "mediafilez-bot-health.json"),
+            JSON.stringify({ ready: client.isReady(), at: Date.now() }),
+            { mode: 0o600 },
+        );
+    } catch {
+        log.warn("Could not update bot health.");
+    }
+}, 10_000);
+healthTimer.unref();
 
 log.info(
     `Discord REST timeout: ${config.discordRestTimeoutMs}ms; internal retries: ${config.discordRestRetries}; upload target: ${formatBytes(config.discordUploadTargetBytes)}.`,
