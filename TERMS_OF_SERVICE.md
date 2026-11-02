@@ -1,105 +1,106 @@
 # MediaFilez Terms of Service
 
-**Effective date:** September 10, 2026  
-**Last updated:** September 10, 2026
+**Effective date:** November 2, 2026
 
-These Terms of Service (the **"Terms"**) govern use of the official hosted MediaFilez Discord application (the **"Service"**), operated by the MediaFilez project (the **"Operator," "we," "us,"** or **"our"**). By installing, authorizing, or using the Service, you agree to these Terms. If you do not agree, do not use the Service.
+**Last updated:** November 2, 2026
 
-The MediaFilez source code is separately offered under the AGPL-3.0-only license. These Terms govern the hosted Service, not the rights granted by that software license. Independently hosted copies are operated by their respective hosts and are not covered by these Terms.
+These Terms govern the official hosted MediaFilez services operated by the MediaFilez project (the "Operator", "we", "us", or "our"). Depending on the deployment, the services include the Discord application, website and account API, and background workers that retrieve, process, and store media. Using an interface does not mean every other interface or feature is available to you.
 
-## 1. Eligibility
+The source code is separately licensed under AGPL-3.0-only. These Terms do not restrict rights granted by that license. Independently hosted copies have their own operators, terms, privacy notices, and security responsibilities.
 
-You must be at least 13 years old, meet the minimum age required to use Discord in your country, and be legally permitted to use the Service. If applicable law requires a parent or guardian to agree for you, that person must review and accept these Terms on your behalf.
+## 1. Eligibility and accounts
 
-You must also comply with the [Discord Terms of Service](https://discord.com/terms), [Discord Community Guidelines](https://discord.com/guidelines), and all laws and platform rules that apply to the media or URL you submit.
+You must be at least 13, meet the minimum age for Discord and any other platform you use, and be legally permitted to use the Service. A parent or guardian must agree where applicable law requires it.
 
-## 2. The Service
+Keep your account sessions and API keys private. You are responsible for authorized activity under your account and for promptly reporting suspected compromise. Do not share another person's credentials or impersonate another person. Access limits apply to the account across supported authentication methods; anonymous access, where enabled, may be grouped by the server-observed IP address.
 
-MediaFilez accepts a public HTTP or HTTPS URL through the `/media` command. It attempts to retrieve media, validate it, optionally convert or compress it, and upload one result to Discord. Supported sites, extractors, quality, filenames, availability, and upload limits can change without notice. A listed or technically accessible website is not a promise that every URL is supported or that downloading it is authorized.
+## 2. What the Service provides
 
-The Service may use third-party websites, public embed relays, content-delivery networks, or configured Cobalt instances. These services may be unavailable, may block automated access, and have separate terms and privacy policies.
+MediaFilez accepts supported public HTTP or HTTPS source URLs. It attempts to retrieve media, validate supported file types, optionally convert or compress them, and deliver the result through the requested interface. A post can produce multiple images, videos, attachments, files, or Discord replies. Collections, batches, and archives have configured count, size, time, and delivery limits. An extractor may expose only part of a source; a successful request is not a guarantee that every source item was discoverable.
 
-The Operator may use a dedicated source-platform account or session cookies to access public media that a platform shows only to signed-in visitors. Users do not sign in through MediaFilez and must not provide their account credentials. The presence of an authenticated session does not authorize access to private, paid, removed, rights-restricted, or otherwise protected content and does not grant permission to download or redistribute any media.
+The API may store accounts, saved playlist links, job history, file metadata, and processed media. Workers may store originals, previews, and archives in configured local or object storage. The standalone Discord application uses temporary working files and sends attachments to Discord. A playlist entry saves a link and its metadata; a separate download request can create stored files.
 
-MediaFilez is an independent project and is not affiliated with, endorsed by, or sponsored by Discord or any source platform unless expressly stated.
+Availability, supported sites, extractors, quality, ordering, filenames, and limits can change. A selected quality is a preference where source variants exist, not a guarantee of a particular resolution. The Service is not a backup or permanent archive. Keep your own lawful copies of anything you need to retain.
 
-## 3. Your responsibilities
+Delivery can fail after some results were uploaded or stored. Cancellation or an error does not guarantee that no files or Discord messages exist. Check the job and destination before repeating a request. Retries and explicit deletion can interact with storage recovery; deleting a file does not prevent a later authorized request from recreating it.
 
-You are responsible for each URL and request you submit. You represent that:
+## 3. Source access and third parties
 
-- the URL is public and you have the rights, licenses, permissions, or other lawful basis needed to access, download, transform, and share the requested media;
-- your request and the resulting use will not infringe copyright, privacy, publicity, contractual, or other rights;
-- you will follow the source website's terms and any technical access restrictions;
-- you will not submit secrets, signed private links, credentials, access tokens, personal data you are not authorized to process, or content whose disclosure could harm another person; and
-- you will review the destination channel before requesting a result that may be publicly visible there.
+The Service may contact source platforms, content-delivery networks, operator-configured embed relays, and Cobalt instances. These services have their own rules and privacy practices, can refuse access, and may become unavailable. Public Cobalt discovery is opt-in; an operator must have permission to use any independently operated instance. The Service does not promise to work around a source's rejection or restrictions.
 
-MediaFilez does not grant you rights to third-party content. Being able to retrieve media does not mean you are allowed to copy, publish, or redistribute it.
+An operator may configure a dedicated source-platform account, exported cookies, or an operator-controlled browser profile for public media that requires a signed-in visitor. End users must not send source-platform passwords, cookies, or session exports. A session does not grant permission to retrieve private, paid, removed, rights-restricted, or otherwise protected content. Network validation does not determine the copyright or access status of a post.
 
-## 4. Prohibited use
+Grabfy is an optional external Instagram resolver, disabled by default. Enabling it sends a canonical public post/Reel URL to Grabfy and can route media through its proxy. The operator must review [Grabfy's terms](https://grabfy.com/terms-of-service/) and [privacy notice](https://grabfy.com/privacy-policy/), establish permission for the intended API/bot use, and respect access restrictions and limits. Published website access is not a documented API license or permission for commercial use.
 
-You may not use or attempt to use the Service to:
+MediaFilez is independent of Discord, Meta, source platforms, and third-party download services unless a separate express statement says otherwise.
 
-- access private accounts, paywalled material, removed content, or content protected by digital rights management;
-- bypass authentication, authorization, rate limits, platform safeguards, or access controls;
-- infringe intellectual-property, privacy, publicity, or other legal rights;
-- obtain or distribute child sexual abuse material, non-consensual intimate material, exploitative content, malware, or unlawful content;
+## 4. Your responsibilities and prohibited use
+
+For each request, you represent that you have the rights, permissions, or other lawful basis needed to access, download, process, store, and share the requested material. You must comply with applicable law, the source platform's rules, technical restrictions, and the rules of the destination, including the [Discord Terms](https://discord.com/terms) and [Community Guidelines](https://discord.com/guidelines) when using Discord.
+
+You must not:
+
+- access private accounts, paywalls, removed material, DRM-protected content, or other protected resources without authorization;
+- bypass authentication, authorization, rate limits, platform safeguards, or other access controls;
+- infringe copyright, privacy, publicity, contractual, or other rights;
+- submit credentials, access tokens, private signed links, secrets, or personal data you are not entitled to disclose to the services processing your request;
+- obtain, store, or distribute child sexual abuse material, non-consensual intimate material, exploitative content, malware, or other unlawful material;
 - harass, threaten, dox, impersonate, defraud, or invade another person's privacy;
-- overload, probe, disrupt, reverse engineer, or interfere with the Service, Discord, a source platform, or another system, except for good-faith security research reported under [SECURITY.md](SECURITY.md);
-- automate abusive volumes of requests, evade per-user limits, or use multiple accounts to avoid restrictions; or
-- use the Service in a way that violates applicable law, Discord rules, or the rules of the source platform.
+- overload or disrupt the Service, probe systems without authorization, evade account limits, or use abusive automated request volumes; or
+- use a public delivery option or Discord destination to expose material you are not entitled to publish.
 
-## 5. Content and limited processing permission
+Technical accessibility is not permission to copy or redistribute content. The Service does not grant rights to third-party media and does not independently verify every rights claim or source restriction. This does not excuse misuse by an operator or user.
 
-You keep any rights you have in information or content you submit. You grant the Operator a limited, worldwide, non-exclusive permission to access, copy, temporarily store, transform, and transmit the submitted URL, media, and associated metadata only as needed to provide, secure, troubleshoot, and legally operate the Service. This permission ends when the information is no longer needed for those purposes, subject to ordinary log rotation, provider retention, legal obligations, and Discord's independent retention.
+Good-faith security reports must follow [SECURITY.md](SECURITY.md). Do not conduct destructive tests or use other people's data to demonstrate a problem.
 
-You are responsible for removing a Discord message or attachment you control when you no longer want it available. Server administrators and Discord may have additional controls.
+## 5. Processing permission and visibility
 
-## 6. Privacy
+You keep any rights you have in submitted material. You grant the Operator a limited, non-exclusive permission to retrieve, copy, temporarily or persistently store as described in the Privacy Policy, validate, transform, and transmit the submitted URL, media, and associated metadata only to provide, secure, troubleshoot, and legally operate the Service. This permission ends when that processing is no longer needed, subject to provider retention, legal obligations, and copies outside our control.
 
-Our [Privacy Policy](PRIVACY_POLICY.md) describes what information the official Service processes, why it is used, who may receive it, how long it is kept, and how to request deletion. By using the Service, you acknowledge that processing described there is necessary to carry out your request.
+Review the destination and visibility before requesting delivery. Discord replies can be public in the invoking channel; the private reply option concerns Discord message visibility, not the source's access permissions. Public files and public playlists may be accessible to others. Anyone receiving a signed private download URL may use it until it expires, subject to the delivery provider's controls. Revoking an account credential does not necessarily revoke a previously issued storage link or a copy already downloaded.
 
-## 7. Enforcement and termination
+## 6. Privacy, retention, and deletion
 
-We may reject a request or suspend, restrict, or terminate access without prior notice when reasonably necessary to protect the Service or others, comply with law or platform requirements, investigate abuse, or enforce these Terms. We may also stop operating all or part of the Service at any time.
+The [Privacy Policy](PRIVACY_POLICY.md) explains processing by interface, disclosures, retention limits, and how to request deletion. Temporary job cleanup, queue expiry, signed-link expiry, and deletion of stored files are different operations. The Service does not promise that expiring a link automatically erases its media or database records.
 
-If you believe access was restricted by mistake, contact us with your Discord user ID and a concise description. Do not send credentials or private media.
+You control deletion of Discord messages and attachments only to the extent Discord permits. Public or forwarded copies, source-platform copies, and independently operated providers are outside the Operator's direct control.
 
-## 8. Copyright and rights complaints
+## 7. Restrictions and termination
 
-To report content or use that you believe infringes your rights, email **mediafilez44@gmail.com** with the subject **"MediaFilez Rights Report"** and include the source URL, the Discord location if known, your relationship to the affected work or person, and a way to contact you. Do not include passwords, tokens, or unnecessary sensitive information. Because delivered attachments are hosted by Discord, you may also need to use Discord's reporting process.
+We may reject requests or limit, suspend, or terminate access when reasonably necessary to prevent abuse, protect the Service or others, address a rights complaint, comply with law or platform rules, investigate a security issue, or enforce these Terms. We may discontinue a feature or the Service. Where required by law, applicable notice, explanation, and challenge rights remain available.
 
-## 9. Availability and changes
+For a mistaken restriction, contact us with the relevant account or Discord user ID and a concise description. Do not send credentials or private media.
 
-The Service is provided on an **"as available"** basis. We do not promise uninterrupted access, permanent storage, compatibility with a particular site, a particular media quality, or recovery of any file. We may change limits, engines, commands, features, or these Terms to address technical, security, legal, or platform requirements.
+## 8. Rights complaints
 
-If these Terms materially change, we will update the date above and publish the revision at the same public location. Continued use after the effective date of revised Terms constitutes acceptance to the extent permitted by law.
+Email **mediafilez44@gmail.com** with the subject **"MediaFilez Rights Report"**. Include the source URL, affected file or Discord location if known, your relationship to the work or person, the basis of the complaint, and contact details for a response. Do not include unnecessary personal information. We may seek reasonable verification and restrict access while reviewing a complaint. Discord-hosted attachments may also require a report through Discord.
 
-## 10. Disclaimers
+## 9. Availability and warranties
 
-To the maximum extent permitted by law, the Service is provided without warranties of any kind, express or implied, including warranties of merchantability, fitness for a particular purpose, non-infringement, availability, accuracy, or security. We do not endorse or control third-party content and do not warrant that your use of downloaded media is lawful.
+To the extent permitted by applicable law, the Service is supplied "as available", without warranties of uninterrupted operation, compatibility, accuracy, permanent storage, non-infringement, or fitness for a particular purpose. Third-party content and services are outside our control. We do not warrant that a user's requested download, storage, or redistribution is lawful.
 
-Some jurisdictions do not allow certain warranty exclusions, so part of this section may not apply to you.
+These limits do not exclude mandatory consumer guarantees or other rights that cannot lawfully be excluded.
 
-## 11. Limitation of liability
+## 10. Liability and responsibility for misuse
 
-To the maximum extent permitted by law, the Operator and project contributors will not be liable for indirect, incidental, special, consequential, exemplary, or punitive damages, or for loss of data, profits, goodwill, or access, arising from or related to the Service. Where liability cannot legally be excluded, aggregate liability will be limited to the greater of the amount you paid for the Service during the six months before the event giving rise to the claim or USD 10.
+To the extent permitted by applicable law, the Operator and project contributors are not liable for indirect or consequential loss, lost profits, lost data, or loss caused by third-party outages, source restrictions, or a user's unauthorized use. Where a contractual cap is permitted, aggregate liability for the Service is limited to the greater of amounts you paid for it in the six months preceding the claim or USD 10.
 
-Nothing in these Terms excludes liability that cannot be excluded under applicable law or limits mandatory consumer rights.
+You remain responsible for harm caused by your unlawful submissions or use. Any recovery of costs or damages remains subject to applicable law and the responsibility of the parties involved. These Terms do not transfer the Operator's own legal obligations to users.
 
-## 12. Governing law and disputes
+Nothing excludes liability or remedies that applicable law does not allow us to exclude, including any applicable rules concerning fraud, intentional misconduct, gross negligence, personal injury, or statutory consumer and data-protection rights. These Terms are not a guarantee of immunity from claims or regulatory action.
 
-These Terms are governed by applicable law. Any dispute must be brought before a court or other forum with competent jurisdiction under applicable law. Before filing a formal claim, you agree to contact us and make a good-faith effort to resolve the dispute informally for 30 days, unless urgent relief is reasonably required.
+## 11. Changes and disputes
 
-## 13. General terms
+We may revise these Terms when the Service or its legal or operational requirements change. Revisions will be published at the same location with an updated effective date. Material changes require appropriate notice or acceptance where applicable law requires it; continued use is not a substitute for legally required consent.
 
-If any part of these Terms is unenforceable, the remaining parts will continue in effect. A failure to enforce a provision is not a waiver. You may not transfer your rights under these Terms without our consent; we may transfer these Terms as part of a reorganization or transfer of the Service. These Terms and the Privacy Policy form the entire agreement concerning the official hosted Service, subject to mandatory law and the separate terms of Discord and relevant third parties.
+Applicable law and any mandatory jurisdiction rules govern disputes. Contact us first so we can try to resolve a complaint; this does not delay urgent relief or restrict mandatory rights. If a term is unenforceable, the remaining terms continue to the extent permitted by law. These Terms and the Privacy Policy govern the official Service, subject to the software license and applicable third-party rules.
 
-## 14. Contact
+## 12. Contact and deployment responsibility
 
-Questions about these Terms may be sent to:
+**MediaFilez Project**
 
-**MediaFilez Project**  
-Email: **mediafilez44@gmail.com**  
-Repository: <https://github.com/RlxChap2/MediaFilez>
+Email: **mediafilez44@gmail.com**
 
-These Terms are a project-specific operational draft and should be reviewed by qualified counsel before a commercial launch or other high-risk deployment.
+Repositories: [Bot](https://github.com/RlxChap2/MediaFilez), plus the API and worker distributions used by the deployment.
+
+These documents describe the software's supported operating model. Before a public or commercial deployment, the Operator must identify the responsible legal entity and contact details, confirm applicable jurisdictions and source/provider permissions, set retention and deletion procedures, and obtain legal review appropriate to that deployment. Independently hosted services must publish notices that describe their own operation.

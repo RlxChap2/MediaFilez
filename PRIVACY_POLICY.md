@@ -1,100 +1,115 @@
 # MediaFilez Privacy Policy
 
-**Effective date:** September 10, 2026  
-**Last updated:** September 10, 2026
+**Effective date:** November 2, 2026
 
-This Privacy Policy explains how the official hosted instance of the MediaFilez Discord application (the **"Service"**) processes information. The Service is operated by the MediaFilez project (the **"Operator," "we," "us,"** or **"our"**).
+**Last updated:** November 2, 2026
 
-MediaFilez is open-source software. A person or organization that hosts its own copy is an independent operator and must provide a privacy policy that describes that deployment. This Policy does not cover independently hosted copies.
+This Policy describes the official hosted MediaFilez services operated by the MediaFilez project (the "Operator", "we", "us", or "our"). It covers the Discord application and, where deployed, the website/account API and background media workers. The interfaces you use determine which processing below applies. Independent hosts must provide their own accurate notices; this Policy does not describe their deployments.
 
-## 1. What the Service does
+## 1. Requests and source access
 
-MediaFilez receives a public URL through the `/media` Discord command, retrieves media from that URL or its public source platform, may convert or compress the media, and sends the resulting attachment to Discord. The command can be used in servers, direct messages, and private channels supported by Discord.
+MediaFilez receives public source URLs and requested output options, retrieves and validates supported media, may convert or compress it, and delivers attachments or stored files. Posts can produce multiple files. Saved playlists store links and metadata; downloading a playlist creates separate processing jobs.
 
-Some public media is visible only to a signed-in visitor. For those requests, the Operator may configure a dedicated, Operator-controlled source-platform account or exported session cookies. Users do not sign in through MediaFilez, and the Service does not ask for or receive users' source-platform passwords or cookies. Authenticated access is not used to bypass private-account permissions, paywalls, digital rights management, removed content, or other access controls.
+An operator may configure dedicated source-platform cookies or an operator-controlled browser profile for permitted public content that requires a signed-in visitor. End users do not sign into source platforms through MediaFilez and must not submit source-platform passwords, cookies, or private session exports. Discord OAuth for a MediaFilez website account is separate from source-platform access.
 
-## 2. Information we process
+## 2. Information processed
 
-We process only the information reasonably needed to run, secure, and troubleshoot the Service:
+### Discord application
 
-- **Discord interaction data:** Discord user ID, username or display tag, command name, selected command options, interaction context, application and interaction identifiers, guild or channel context made available by Discord, app permission information, and the attachment-size limit supplied by Discord.
-- **Information you submit:** the source URL, requested output type, and whether the result should be fitted to Discord's upload limit. A submitted URL may itself contain personal information, account names, post identifiers, or query parameters. Do not submit secrets, private links, or access tokens.
-- **Media and source metadata:** downloaded media, filenames, file type and size, and metadata exposed by the source, such as title, creator, duration, dimensions, thumbnail URL, source URL, and source item ID.
-- **Operational data:** timestamps, command context, Discord username or tag, selected download method, filenames, file sizes, processing times, error codes, and diagnostic messages. The Service does not intentionally log bot tokens, cookies, interaction tokens, authorization headers, or signed media URLs. Diagnostics produced by a source or downloader may nevertheless incidentally contain a URL or filename.
+The standalone bot receives the Discord user ID, username or display tag, command and selected options, interaction identifiers, server/channel context provided by Discord, permissions, and attachment-size limits. It processes source URLs, files, filenames, file sizes/types, and source metadata such as title, creator, duration, dimensions, thumbnail URL, or source item ID when available.
 
-The Service does not use a user-account database, advertising SDK, or analytics service. It does not request the Discord Message Content privileged intent and does not read ordinary message content.
+The bot uses the Guilds intent. It does not request the Message Content privileged intent or read ordinary chat messages. Its active-job accounting is held in memory; it does not itself provide the API's persistent account database. Logs can include Discord tags, command context, engine names, filenames, sizes, timings, errors, and diagnostic messages. They are not anonymous by definition.
 
-## 3. How we use information
+### Website and API accounts
 
-We use the information above to:
+The API uses PostgreSQL for account and service records. Depending on the configured login methods, this includes email and password hashes, Discord user ID/username/avatar, account role and timestamps, session token hashes and expiry, and API-key hashes plus names, prefixes, expiry and usage metadata. Raw newly issued API keys are returned to the authorized client; the API stores hashes rather than those raw keys.
 
-- accept and validate a command;
-- prevent excessive concurrent requests from the same user;
-- retrieve, validate, convert, and deliver the requested media;
-- show progress and error messages;
-- protect the Service, Discord, and third parties from abuse, malicious URLs, unsafe files, and unauthorized access;
-- diagnose failures and maintain reliability; and
-- comply with applicable law and enforce the [Terms of Service](TERMS_OF_SERVICE.md).
+Discord login uses the `identify` permission and a temporary authorization-code exchange with PKCE. The exchanged Discord OAuth access token is used to obtain identity; the account implementation does not persist it as an account credential. Browser authentication uses an HttpOnly session cookie. Its Secure flag depends on an HTTPS public origin, which operators must configure for production. Supported legacy email/password accounts have their own authentication flow.
 
-Where applicable law requires a legal basis, we rely on performance of the service requested by you, our legitimate interests in operating and securing the Service, compliance with legal obligations, and consent where the law specifically requires it.
+PostgreSQL also stores submitted URLs/options, job ownership, payloads, status, results, errors, idempotency information, timestamps, batch records, file metadata and object keys, visibility/expiry fields, content records, and saved playlists/items. These records can include personal data contained in a URL, filename, caption, creator name, or submitted title.
 
-## 4. When information is disclosed
+The API processes the server-observed IP address for request limits and, where anonymous downloads are enabled, an anonymous job-access subject. People sharing an observed IP can share that anonymous subject; anonymous mode does not provide account-level separation.
 
-We do not sell personal information, rent it, or use it for targeted or cross-context behavioral advertising.
+### Workers, storage, and queues
 
-To perform a request, information may be disclosed to:
+Redis/BullMQ carries job URLs/options, progress, results, cancellation/control information, and queue metadata. Workers process source files, previews, archives, extractor metadata, and isolated working directories. The storage adapter writes outputs and associated recovery metadata to the configured local root or object-storage bucket. Persistent storage is separate from temporary job cleanup. Local-storage durability across container replacement requires an operator-managed persistent volume; the shipped worker Compose configuration does not mount one for stored media.
 
-- **Discord:** command interactions are received from Discord, and the result, filename, source title or creator when available, status text, and attachment are sent back to Discord. Discord processes this information under its [Privacy Policy](https://discord.com/privacy).
-- **The submitted source and its content-delivery providers:** the Service connects to the URL and related public media endpoints from the Service's server. Those services normally receive the server IP address, request headers, and requested URL. When an Operator-controlled account or session is used, the source platform may associate the requested URL and related activity with that account.
-- **Configured media processors or relays:** locally run tools such as yt-dlp, gallery-dl, FFmpeg, and YouTube.js process requests. The default configuration may send the relevant public Instagram URL to `kkkinstagram.com` and a public Reddit URL to `redditez.com`. Reddit requests may also use `embed.reddit.com`. Operators can disable these relays. A configured Cobalt instance receives the submitted source URL and requested media options; the default Docker deployment uses private, self-hosted Cobalt containers, while an operator may configure another instance.
-- **Infrastructure providers:** hosting, networking, and log-storage providers may process limited technical data on our behalf.
-- **Authorities or other parties when required:** we may disclose information when reasonably necessary to comply with law, protect rights and safety, investigate abuse, or establish or defend legal claims.
+### Optional official Discord presence reporting
 
-Third-party websites and independently operated Cobalt or relay instances have their own terms and privacy practices. We do not control their independent processing.
+The separate official presence reporter can send application/bot identity, instance identity and liveness heartbeats, guild IDs, guild names, icons, features, approximate member counts, and vanity codes. The API stores the latest snapshot in Redis. The public summary exposes aggregate status/counts; detailed snapshots require dedicated control credentials. If the operator enables a public community directory, selected guild metadata can also be published by the website backend. Reporting does not collect ordinary messages or member lists. The standalone bot does not automatically enable this separate reporter.
 
-## 5. Public and private replies
+### Logs and service integrations
 
-Replies in Discord servers are public in the invoking channel by default, unless the deployment is configured for private guild replies or Discord requires a private response. Direct-message and private-channel visibility is controlled by Discord. Do not use the Service for media or metadata you do not want exposed to the people who can view the destination channel.
+Operational records may include request IDs, request paths, timestamps, account/job IDs, Discord tags, source/engine errors, filenames, sizes, and processing times. Authentication headers, cookies, tokens, private keys, and signed media URLs must not be intentionally placed in operational logs. Extractor diagnostics or exception messages can still contain URLs or filenames; operators must restrict access, redact sensitive values, and configure log retention. This is not a guarantee that every third-party diagnostic is automatically scrubbed.
 
-## 6. Retention
+The reviewed applications do not include advertising or behavioral-analytics SDKs. Deployment providers and source websites can independently process their own traffic and logs.
 
-- **Queue data:** a Discord user ID and active-job count are held in memory only while that user's request is running or queued, then removed.
-- **Temporary files:** source media, converted files, extractor metadata, and any per-attempt cookie copy are stored in an isolated temporary directory. The Service attempts to delete that directory after success or failure. If the process or host stops unexpectedly, an abandoned directory may remain until a later successful startup detects that its owner is inactive and removes it.
-- **Discord copies:** the delivered message and attachment remain on Discord according to Discord's retention rules and actions taken by users, server administrators, or Discord. They are not controlled by the Service's temporary-file cleanup.
-- **Operational logs:** logs are kept only as long as reasonably needed for security, abuse prevention, and troubleshooting, then rotated or deleted according to the hosting environment. The repository's default Docker configuration uses size-based rotation of three files of up to 10 MiB per service; time in storage therefore varies with activity. Legal holds or applicable law may require longer retention.
+## 3. Purposes and legal basis
 
-Backups or provider-level logs, if present, may take additional time to expire through their normal rotation cycle.
+We process information to authenticate authorized clients, validate and execute requests, enforce limits, deliver files, retain requested account/playlist/job features, recover interrupted storage commits, communicate progress, investigate faults or abuse, protect rights and security, and meet legal obligations.
 
-## 7. Security
+Where a legal basis is required, the appropriate basis depends on the processing and applicable law, including providing the requested service, legitimate interests subject to required balancing, legal obligations, or consent when specifically required. This Policy does not replace consent where the law requires it.
 
-MediaFilez limits Discord access to the Guilds intent, validates public URLs and redirects, blocks private-network destinations, limits transfer sizes and execution time, isolates temporary jobs, sanitizes filenames, avoids shell command construction, and does not intentionally place credentials in logs. No service can guarantee absolute security. Please report a suspected vulnerability using the private process in [SECURITY.md](SECURITY.md).
+## 4. Recipients and visibility
 
-## 8. Your privacy choices and rights
+Information can be disclosed to:
 
-Depending on where you live, you may have rights to request access, correction, deletion, restriction, portability, or objection, and to appeal or complain to a data-protection authority. We will not discriminate against you for exercising an applicable privacy right.
+- **Discord:** interactions and delivered replies/attachments. Source metadata can be processed without being included in every reply. Discord handles its copies under its own [Privacy Policy](https://discord.com/privacy).
+- **Source platforms and their CDNs:** the requested source/media URL, the Service's server IP, and request headers. An operator session can associate source activity with that operator account.
+- **Configured relays and Cobalt instances:** relevant source URLs and media options. Instagram embed proxies are configurable; `INSTAGRAM_PROXY_HOSTS=none` disables them. Reddit relays are configurable through `REDDIT_PROXY_HOSTS`, including `none`. Defaults differ between the bot and worker distributions; consult that deployment's configuration. Reddit processing can also contact `embed.reddit.com`. Cobalt directory discovery is opt-in; a configured external instance has independent practices. Local yt-dlp, gallery-dl, YouTube.js, FFmpeg, and FFprobe process only the stages in which they are used.
+- **Hosting, PostgreSQL/Redis, storage, networking, and logging providers:** the data needed for the configured infrastructure. Public object storage/CDN delivery can expose originals, previews, and filenames to anyone with access to the public location.
+- **Authorized administrators and required recipients:** limited information for operation, support, rights complaints, legal requirements, and protection against abuse.
 
-To make a request, email **mediafilez44@gmail.com** with the subject **"MediaFilez Privacy Request"**. Include your Discord user ID, an approximate command date and time, and the type of request. Do not send a Discord token, cookie file, password, or private media. We may request limited verification to avoid disclosing or deleting another person's information.
+We do not sell or rent personal information or use it for targeted advertising. Adding a new external processing service requires reviewing its terms/privacy practices, allowing the operator to disable or configure it, and updating the deployment's disclosures as needed. A successful technical test is not approval of a provider's legal or privacy practices.
 
-Because MediaFilez has no persistent user-account database and operational logs may not include a stable user ID, we may be unable to locate data that cannot reasonably be linked to a verified request. You may need to use Discord's own controls or contact Discord regarding messages, attachments, or account information held by Discord.
+Discord guild replies are normally visible to the invoking channel unless the private option or deployment settings make them ephemeral. A private Discord reply does not make source access private. Public playlist/file options and forwarded links can expose material outside your account. A signed private storage link is usable by a recipient until its expiry, subject to provider controls; account logout or key revocation does not necessarily invalidate links already issued.
 
-## 9. Children
+### Optional Grabfy processing
 
-The Service is not directed to children under 13 or anyone below the minimum age required to use Discord in their country. Do not use the Service if you are not eligible to use Discord. If you believe a child submitted personal information contrary to these requirements, contact us so we can review and delete information where reasonably possible.
+`GRABFY_ENABLED` is false by default. If the operator enables it in the bot or worker, MediaFilez sends a canonical public Instagram post/Reel URL, the server IP, and ordinary request headers to `api.grabfy.com`. Source query parameters/fragments are removed. The adapter does not forward Discord identities, application API keys, authorization headers, or source-platform cookies. Media downloads can also pass through Grabfy's signed proxy URLs. These URLs are sensitive download capabilities and must not be logged.
 
-## 10. International processing
+Grabfy's published [privacy notice](https://grabfy.com/privacy-policy/) allows technical/usage information, analytics technologies, other service providers, and retention for operational/security/legal purposes without a fixed deletion period. MediaFilez has not independently verified its internal processing, upstream providers, storage, or deletion practices. Its homepage's no-tracking claims are not a MediaFilez guarantee. The server API request does not execute Grabfy's webpage scripts, but this does not prevent server-side logging. Disabling `GRABFY_ENABLED` prevents this adapter from sending further requests; it cannot erase information already received by Grabfy.
 
-Discord, hosting providers, source platforms, relays, and content-delivery providers may process information in countries other than your own. Those countries may have different data-protection laws. Where applicable law requires it, an appropriate mechanism must be used for an international transfer.
+## 5. Retention and deletion
 
-## 11. Changes to this Policy
+These retention mechanisms are separate:
 
-We may update this Policy when the Service, its providers, or legal requirements change. We will update the date above and publish the revised Policy at the same public location. Material changes may also be announced through the repository or the Service where practical.
+- **Bot active jobs:** in-memory user accounting lasts while requests are queued/running and is removed afterward.
+- **Temporary job files:** cleanup is attempted after success, failure, or cancellation. A crash can leave working files or staging directories. Recovery removes abandoned directories only when ownership checks permit it; another host's or uncertain owner's files may need operator cleanup.
+- **Redis queue records:** completion/failure retention uses configured age/count limits; the API's default completion/failure age is 24 hours. That setting does not erase PostgreSQL history or stored media. Cancellation/control keys and presence snapshots have separate lifetimes; the latest presence snapshot does not have an automatic TTL in the current implementation.
+- **Accounts, playlists, jobs, and other PostgreSQL records:** persist until deleted by an authorized process or the operator's applicable retention/deletion procedure. The repository does not implement a universal scheduled purge or a complete self-service account-erasure endpoint.
+- **Stored originals, previews, archives, and recovery metadata:** remain until explicitly deleted or removed by a configured storage lifecycle/retention process. A worker's temporary cleanup does not automatically delete these outputs. Private access expiry, session expiry, public cache lifetime, and signed-link expiry are not media-erasure schedules.
+- **Discord, public, downloaded, or forwarded copies:** have lifetimes controlled by Discord, recipients, caches, and their respective policies. Deleting a local job cannot recall them.
+- **Operational logs and backups:** use the deployment's restricted-access retention, rotation, legal-hold, and backup-expiry procedures. The bot's default Compose logging rotates by size, so elapsed retention varies with activity. Other deployments must configure their own limits.
 
-## 12. Contact
+Operators must define retention periods and deletion procedures for their actual deployment before public operation. We retain information only as needed for the stated purposes or legal obligations; no automatic deletion period is promised where the implementation does not provide one. Provider-level backups and logs can take additional time to expire.
 
-For privacy questions or requests, contact:
+## 6. Security measures and their limits
 
-**MediaFilez Project**  
-Email: **mediafilez44@gmail.com**  
-Repository: <https://github.com/RlxChap2/MediaFilez>
+Controls include authentication and ownership checks for protected API resources, credential hashing, configured request/job limits, URL/DNS/redirect checks in guarded HTTP adapters, bounded transfers, filename handling, isolated temporary job paths, cancellation/time limits, and argument-array subprocess invocation.
 
-This Policy is intended to describe the Service accurately; it is not a substitute for legal advice to the Operator or to a self-hosting party.
+These are application controls, not a complete operating-system sandbox. Native extractors and libraries have different network behavior between distributions. Untrusted production workloads require OS-enforced egress restrictions, least-privilege tool identities, resource limits, and private infrastructure access. The worker's proxy does not itself prevent an extractor from bypassing it without deployment enforcement. Filesystem access remains part of a native process's authority. The code does not promise antivirus scanning, content-rights verification, or absolute security. See [SECURITY.md](SECURITY.md).
+
+## 7. Your choices and rights
+
+Where applicable, you may have rights to access, correction, deletion, restriction, portability, objection, withdrawal of consent, and a complaint or appeal to a competent authority. Mandatory rights are not waived by using the Service.
+
+Email **mediafilez44@gmail.com** with the subject **"MediaFilez Privacy Request"**. Include your MediaFilez account or Discord user ID, approximate request time, relevant file/job IDs if known, and what you request. Do not send passwords, session cookies, bot tokens, or private media. We may request reasonable identity verification and retain information required by law or a valid security/legal need.
+
+The standalone bot may lack enough persistent identifiers to locate a past request. API records may be identifiable by account/job ownership. Some actions require manual operator work; there is no promise of a self-service erasure feature. Discord messages and independently hosted provider copies may require action with the respective provider. Credential revocation limits future authentication but does not erase stored records or third-party copies by itself.
+
+## 8. Children and international processing
+
+The Service is not directed to children under 13 or people below the applicable platform minimum age. Contact us if you believe a child supplied information contrary to these requirements.
+
+Providers can process data in countries other than your own. The Operator must establish any transfer safeguards required by applicable law; this software distribution does not itself establish a transfer agreement, provider contract, or legal basis for every deployment.
+
+## 9. Changes and contact
+
+Changes are published at the same location with an updated date. Material changes require appropriate notice or consent where applicable law requires it.
+
+**MediaFilez Project**
+
+Email: **mediafilez44@gmail.com**
+
+Before launching a deployment, its operator must publish the responsible entity/contact, actual providers, applicable retention periods, and other legally required particulars. Independently hosted services must replace this notice with one that describes their own processing. This Policy describes the reviewed operating model and does not certify legal compliance in every jurisdiction.
