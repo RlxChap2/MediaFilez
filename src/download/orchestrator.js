@@ -70,7 +70,7 @@ function publicFailure(attempts, outputType) {
     }
 
     if (/account authentication|cookies|login required|empty media response/i.test(messages)) {
-        return "This post needs an authenticated session. Export fresh browser cookies to MEDIA_COOKIES_FILE, then try again.";
+        return "This source requires an operator-configured session. Contact the service operator; do not send passwords or cookies.";
     }
 
     if (/HTTP (?:Error )?403|forbidden|blocked this server's network address/i.test(messages)) {
