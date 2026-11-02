@@ -95,6 +95,8 @@ export const config = {
         process.env.INSTAGRAM_PROXY_HOSTS === undefined
             ? ["www.kkkinstagram.com"]
             : parseList(process.env.INSTAGRAM_PROXY_HOSTS),
+    grabfyEnabled: parseBoolean(process.env.GRABFY_ENABLED, false),
+    grabfyTimeoutMs: parseInteger(process.env.GRABFY_TIMEOUT_MS, 20_000, 1_000, 60_000),
     instagramProxyFirst: parseBoolean(process.env.INSTAGRAM_PROXY_FIRST, false),
     redditProxyHosts:
         process.env.REDDIT_PROXY_HOSTS === undefined ? ["redditez.com"] : parseList(process.env.REDDIT_PROXY_HOSTS),
