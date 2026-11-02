@@ -18,6 +18,7 @@ export async function upsertGlobalCommands(rest, applicationId, commands) {
     return Promise.all(
         commands.map((command) => {
             const existing = existingByIdentity.get(commandIdentity(command));
+
             if (existing) {
                 return rest.patch(Routes.applicationCommand(applicationId, existing.id), { body: command });
             }

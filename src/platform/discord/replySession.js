@@ -17,22 +17,28 @@ const PHASE_COPY = {
 
 function progressText(progress) {
     if (!progress) return "";
+
     if (Number.isFinite(progress.percent)) {
         const bytes =
             progress.downloadedBytes && progress.totalBytes
                 ? ` | ${formatBytes(progress.downloadedBytes)} / ${formatBytes(progress.totalBytes)}`
                 : "";
+
         return ` | ${Math.min(progress.percent, 100).toFixed(1)}%${bytes}`;
     }
+
     if (progress.downloadedBytes) {
         const total = progress.totalBytes ? ` / ${formatBytes(progress.totalBytes)}` : "";
+
         return ` | ${formatBytes(progress.downloadedBytes)}${total}`;
     }
+
     return "";
 }
 
 function statusCopy(status) {
     const base = status.detail || PHASE_COPY[status.phase] || "Working";
+
     return `${base}${progressText(status.progress)}...`;
 }
 
@@ -42,17 +48,23 @@ function deliveredCopy(output) {
 
 function hasExpectedAttachment(message, expected) {
     const attachments = message?.attachments;
+
     if (!attachments) return false;
+
     const values = typeof attachments.values === "function" ? [...attachments.values()] : attachments;
     const remaining = [...values];
+
     return (Array.isArray(expected) ? expected : [expected]).every((file) => {
         const index = remaining.findIndex(
             (attachment) =>
                 attachment.name === file.fileName &&
                 (!file.sizeBytes || !attachment.size || attachment.size === file.sizeBytes),
         );
+
         if (index < 0) return false;
+
         remaining.splice(index, 1);
+
         return true;
     });
 }
@@ -60,15 +72,18 @@ function hasExpectedAttachment(message, expected) {
 function errorChain(error) {
     const errors = [];
     let current = error;
+
     while (current && !errors.includes(current)) {
         errors.push(current);
         current = current.cause;
     }
+
     return errors;
 }
 
 function isRetryableUploadError(error) {
     const retryableCodes = new Set(["UND_ERR_SOCKET", "UND_ERR_CONNECT_TIMEOUT", "ECONNRESET", "ETIMEDOUT", "EPIPE"]);
+
     return errorChain(error).some(
         (item) =>
             item?.name === "AbortError" ||
@@ -83,11 +98,13 @@ function isRetryableUploadError(error) {
 function uploadErrorSummary(error) {
     const item = errorChain(error).find((candidate) => candidate?.code || candidate?.message) ?? error;
     const code = item?.code ? `${item.code}: ` : "";
+
     return `${code}${item?.message || "unknown upload error"}`;
 }
 
 function uploadFailure(error, attempts) {
     const codes = errorChain(error).map((item) => item?.code);
+
     if (codes.includes(40005) || error?.status === 413) {
         return userError(
             "Discord rejected the attachment as too large even though it was below the advertised limit. Try a smaller upload limit.",
@@ -95,6 +112,7 @@ function uploadFailure(error, attempts) {
             { cause: error },
         );
     }
+
     if (codes.includes(10015) || codes.includes(10062)) {
         return userError(
             "The Discord interaction expired before the upload finished. Try the command again.",
@@ -102,6 +120,7 @@ function uploadFailure(error, attempts) {
             { cause: error },
         );
     }
+
     return userError(
         `Discord closed the upload connection before accepting the file after ${attempts} attempt${attempts === 1 ? "" : "s"}. Try the command again.`,
         "DISCORD_UPLOAD_FAILED",
@@ -120,9 +139,11 @@ function jobTimeoutFailure(cause) {
 async function wait(milliseconds, signal) {
     try {
         await sleep(milliseconds, undefined, signal ? { signal } : undefined);
+
         return true;
     } catch (error) {
         if (signal?.aborted && error.name === "AbortError") return false;
+
         throw error;
     }
 }
@@ -159,26 +180,34 @@ export class ReplySession {
      */
     async waitBeforeRetry(milliseconds, signal, cause) {
         const completed = await this.wait(milliseconds, signal);
+
         if (completed !== false && !signal?.aborted) return;
+
         this.state = "open";
+
         throw jobTimeoutFailure(cause);
     }
 
     update(status, options = {}) {
         if (this.state !== "open") return this.pendingUpdate;
+
         const now = Date.now();
         const phaseChanged = status.phase !== this.lastPhase;
+
         if (!options.force && !phaseChanged && now - this.lastUpdateAt < this.intervalMs) return this.pendingUpdate;
+
         this.lastPhase = status.phase;
         this.lastUpdateAt = now;
         this.pendingUpdate = this.pendingUpdate
             .then(() => (this.state === "open" ? this.editReply({ content: statusCopy(status) }) : null))
             .catch((error) => log.warn(`Could not update job status: ${error.message}`));
+
         return this.pendingUpdate;
     }
 
     async commit(output, details, options = {}) {
         if (this.state !== "open") throw new Error(`Cannot commit a reply in state ${this.state}.`);
+
         await this.pendingUpdate;
         this.state = "committing";
         const outputs = Array.isArray(output) ? output : [output];
@@ -204,23 +233,29 @@ export class ReplySession {
             try {
                 await this.upload(this.interaction, payload, { signal: options.signal, messageId: this.messageId });
                 this.state = "committed";
+
                 return;
             } catch (uploadError) {
                 let verificationError;
+
                 for (let verification = 1; verification <= 3; verification += 1) {
                     try {
                         const message = await this.fetchReply();
+
                         if (hasExpectedAttachment(message, outputs)) {
                             this.state = "committed";
                             log.warn(
                                 "Discord upload call failed, but the attachment is present on the original response.",
                             );
+
                             return;
                         }
+
                         verificationError = null;
                         break;
                     } catch (error) {
                         verificationError = error;
+
                         if (verification < 3 && isRetryableUploadError(error)) {
                             await this.waitBeforeRetry(
                                 this.uploadRetryDelayMs * verification,
@@ -229,12 +264,14 @@ export class ReplySession {
                             );
                             continue;
                         }
+
                         break;
                     }
                 }
 
                 if (verificationError) {
                     this.state = "unknown";
+
                     throw new DeliveryUnknownError(
                         "Discord did not confirm whether the upload finished. Check the original response before trying again.",
                         { cause: uploadError },
@@ -243,11 +280,13 @@ export class ReplySession {
 
                 if (options.signal?.aborted) {
                     this.state = "open";
+
                     throw jobTimeoutFailure(uploadError);
                 }
 
                 if (!isRetryableUploadError(uploadError) || attempt === this.uploadAttempts) {
                     this.state = "open";
+
                     throw uploadFailure(uploadError, attempt);
                 }
 
@@ -267,8 +306,10 @@ export class ReplySession {
         const batches = attachmentBatches(outputs, interactionMessageLimit(this.interaction));
         await this.commit(batches[0], details, options);
         let delivered = batches[0].length;
+
         for (const batch of batches.slice(1)) {
             let reply;
+
             try {
                 options.signal?.throwIfAborted();
                 const message = await this.interaction.followUp({
@@ -290,6 +331,7 @@ export class ReplySession {
                 await this.editReply({
                     content: `${delivered}/${outputs.length} files confirmed. Check the replies before retrying the remaining files.`,
                 }).catch(() => {});
+
                 throw new DeliveryUnknownError(
                     `Discord confirmed ${delivered}/${outputs.length} files. Check the replies before trying again.`,
                     { cause: error },
@@ -300,8 +342,11 @@ export class ReplySession {
 
     async fail(error) {
         if (["committed", "committing", "unknown", "failed"].includes(this.state) || error?.responseLocked) return;
+
         await this.pendingUpdate;
+
         if (this.state !== "open") return;
+
         try {
             await this.editReply({
                 content: `Could not finish: ${messageForError(error)}`,

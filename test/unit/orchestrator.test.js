@@ -19,11 +19,16 @@ async function tempJob() {
 async function videoFixture(directory, name, withAudio) {
     const filePath = path.join(directory, name);
     const args = ["-f", "lavfi", "-i", "color=c=blue:s=64x64:r=10:d=0.5"];
+
     if (withAudio) args.push("-f", "lavfi", "-i", "sine=frequency=440:duration=0.5");
+
     args.push("-c:v", "libx264", "-pix_fmt", "yuv420p");
+
     if (withAudio) args.push("-c:a", "aac");
+
     args.push("-y", filePath);
     await runFFmpeg(args);
+
     return filePath;
 }
 
@@ -32,6 +37,7 @@ function fileEngine(source, method, calls) {
         calls.push(method);
         const filePath = path.join(attemptDir, path.basename(source));
         await fs.copyFile(source, filePath);
+
         return { filePath, fileName: path.basename(filePath), method };
     };
 }
@@ -39,6 +45,7 @@ function fileEngine(source, method, calls) {
 for (const outputType of ["video", "auto"]) {
     test(`${outputType} prefers an audible video over a silent first result`, async (t) => {
         if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+
         const jobDir = await tempJob();
         t.after(() => fs.rm(jobDir, { recursive: true, force: true }));
         const silent = await videoFixture(jobDir, "silent.mp4", false);
@@ -63,6 +70,7 @@ for (const outputType of ["video", "auto"]) {
 
 test("keeps an audio-bearing first video without probing another engine", async (t) => {
     if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+
     const jobDir = await tempJob();
     t.after(() => fs.rm(jobDir, { recursive: true, force: true }));
     const audible = await videoFixture(jobDir, "audible.mp4", true);
@@ -89,6 +97,7 @@ test("keeps an audio-bearing first video without probing another engine", async 
 
 test("keeps the first silent video when the audio probe fails", async (t) => {
     if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+
     const jobDir = await tempJob();
     t.after(() => fs.rm(jobDir, { recursive: true, force: true }));
     const silent = await videoFixture(jobDir, "silent.mp4", false);
@@ -103,6 +112,7 @@ test("keeps the first silent video when the audio probe fails", async (t) => {
                 "yt-dlp",
                 async () => {
                     calls.push("yt-dlp");
+
                     throw new DownloadMethodError("yt-dlp", "Unavailable");
                 },
             ],
@@ -116,6 +126,7 @@ test("keeps the first silent video when the audio probe fails", async (t) => {
 
 test("auto keeps a video when the audio probe returns an image", async (t) => {
     if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+
     const jobDir = await tempJob();
     t.after(() => fs.rm(jobDir, { recursive: true, force: true }));
     const silent = await videoFixture(jobDir, "silent.mp4", false);
@@ -139,6 +150,7 @@ test("auto keeps a video when the audio probe returns an image", async (t) => {
 
 test("video output rejects a mislabeled image and tries the next engine", async (t) => {
     if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+
     const jobDir = await tempJob();
     t.after(() => fs.rm(jobDir, { recursive: true, force: true }));
     const image = path.join(jobDir, "misleading.mp4");
@@ -188,6 +200,7 @@ test("stops after the first valid engine result", async (t) => {
                 calls.push("first");
                 const filePath = path.join(attemptDir, "result.png");
                 await fs.writeFile(filePath, PNG);
+
                 return { filePath, fileName: "result.png", method: "first" };
             },
         ],
@@ -195,6 +208,7 @@ test("stops after the first valid engine result", async (t) => {
             "second",
             async () => {
                 calls.push("second");
+
                 throw new Error("must not run");
             },
         ],
@@ -220,6 +234,7 @@ test("auto accepts the first recognized media kind", async (t) => {
             async (_url, attemptDir) => {
                 const filePath = path.join(attemptDir, "detected.png");
                 await fs.writeFile(filePath, PNG);
+
                 return { filePath, fileName: "detected.png", method: "detector" };
             },
         ],
@@ -250,6 +265,7 @@ test("falls back from a blocked Reddit response to a proxy artifact", async (t) 
             "reddit-embed",
             async () => {
                 calls.push("reddit-embed");
+
                 throw new DownloadMethodError("reddit-embed", "HTTP 403");
             },
         ],
@@ -259,6 +275,7 @@ test("falls back from a blocked Reddit response to a proxy artifact", async (t) 
                 calls.push("reddit-proxy");
                 const filePath = path.join(attemptDir, "result.png");
                 await fs.writeFile(filePath, PNG);
+
                 return { filePath, fileName: "result.png", method: "reddit-proxy:working.example" };
             },
         ],
@@ -285,6 +302,7 @@ test("recovers a complete artifact after an engine error and stops fallback", as
             async (_url, attemptDir) => {
                 calls.push("unstable");
                 await fs.writeFile(path.join(attemptDir, "complete.png"), PNG);
+
                 throw new Error("process returned a non-zero exit code");
             },
         ],
@@ -292,6 +310,7 @@ test("recovers a complete artifact after an engine error and stops fallback", as
             "fallback",
             async () => {
                 calls.push("fallback");
+
                 throw new Error("must not run");
             },
         ],
@@ -343,6 +362,7 @@ test("falls back when one engine reaches its own timeout", async (t) => {
             "timed-out",
             async () => {
                 calls.push("timed-out");
+
                 throw Object.assign(new Error("engine request timed out"), { name: "AbortError" });
             },
         ],
@@ -352,6 +372,7 @@ test("falls back when one engine reaches its own timeout", async (t) => {
                 calls.push("fallback");
                 const filePath = path.join(attemptDir, "result.png");
                 await fs.writeFile(filePath, PNG);
+
                 return { filePath, fileName: "result.png", method: "fallback" };
             },
         ],
@@ -415,6 +436,7 @@ test("replaces verbose network block pages with a bounded engine error", async (
         }),
         (error) => {
             assert.equal(error.attempts[0].error, "The source blocked this server's network address.");
+
             return true;
         },
     );

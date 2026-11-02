@@ -32,8 +32,11 @@ function encodeInteger(value) {
 
 function decodeInteger(value) {
     if (!/^[0-9a-z]+$/.test(value)) throw new Error("Invalid Nerd Info value.");
+
     const decoded = Number.parseInt(value, 36);
+
     if (!Number.isSafeInteger(decoded)) throw new Error("Invalid Nerd Info value.");
+
     return decoded;
 }
 
@@ -46,12 +49,15 @@ function encodeDetails(output, details) {
         NOTE_CODES.get(output.note) || "-",
         details.recovered ? "1" : "0",
     ];
+
     return `${CUSTOM_ID_PREFIX}${fields.join(".")}`;
 }
 
 function decodeDetails(customId) {
     const fields = customId.slice(CUSTOM_ID_PREFIX.length).split(".");
+
     if (fields.length !== 6 || !fields[0]) throw new Error("Invalid Nerd Info payload.");
+
     return {
         method: fields[0],
         downloadMs: decodeInteger(fields[1]) / 10,
@@ -64,9 +70,13 @@ function decodeDetails(customId) {
 
 function firstAttachment(message) {
     const attachments = message?.attachments;
+
     if (!attachments) return null;
+
     if (typeof attachments.first === "function") return attachments.first() || null;
+
     if (typeof attachments.values === "function") return attachments.values().next().value || null;
+
     return Array.isArray(attachments) ? attachments[0] || null : null;
 }
 
@@ -77,8 +87,11 @@ function nerdInfoCopy(attachment, details) {
         `-# Download: ${formatElapsed(details.downloadMs)} · Processing: ${formatElapsed(details.processMs)}`,
         `-# Upload target: ${formatBytes(details.uploadTargetBytes)} · ${formatBytes(attachment.size)}`,
     ];
+
     if (details.note) lines.push(`-# Note: ${details.note}`);
+
     if (details.recovered) lines.push("-# The downloader reported an error, but the delivered file was complete.");
+
     return lines.join("\n");
 }
 
@@ -102,11 +115,13 @@ export async function handleNerdInfoButton(interaction) {
     if (!interaction.isButton?.() || !String(interaction.customId).startsWith(CUSTOM_ID_PREFIX)) return false;
 
     const attachment = firstAttachment(interaction.message);
+
     if (!attachment) {
         await interaction.reply({
             content: "Nerd Info is unavailable because the media attachment is no longer present.",
             flags: MessageFlags.Ephemeral,
         });
+
         return true;
     }
 
@@ -116,6 +131,7 @@ export async function handleNerdInfoButton(interaction) {
         flags: MessageFlags.Ephemeral,
         allowedMentions: { parse: [] },
     });
+
     return true;
 }
 

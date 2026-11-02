@@ -18,6 +18,7 @@ export class ProcessExecutionError extends Error {
 
 function appendCapped(current, chunk) {
     const next = current + chunk;
+
     return next.length > MAX_CAPTURE_BYTES ? next.slice(-MAX_CAPTURE_BYTES) : next;
 }
 
@@ -26,24 +27,29 @@ function emitLines(buffer, chunk, callback) {
     const lines = combined.split(/\r?\n|\r/g);
     const unfinished = lines.pop() ?? "";
     const remainder = unfinished.length > MAX_CAPTURE_BYTES ? unfinished.slice(-MAX_CAPTURE_BYTES) : unfinished;
+
     if (callback) {
         for (const line of lines) {
             if (line) callback(line.replace(/\x1b\[[0-9;]*m/g, ""));
         }
     }
+
     return remainder;
 }
 
 function stopProcess(child) {
     if (!child.pid || child.exitCode !== null) return;
+
     if (process.platform === "win32") {
         const killer = spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], {
             windowsHide: true,
             stdio: "ignore",
         });
         killer.unref();
+
         return;
     }
+
     try {
         process.kill(-child.pid, "SIGKILL");
     } catch {
@@ -81,21 +87,25 @@ export function runProcess(command, args, options = {}) {
             stopProcess(child);
         };
         options.signal?.addEventListener("abort", abort, { once: true });
+
         if (options.signal?.aborted) abort();
 
         child.stdout.on("data", (chunk) => {
             const text = chunk.toString();
             stdout = appendCapped(stdout, text);
+
             if (options.onStdoutLine) stdoutRemainder = emitLines(stdoutRemainder, text, options.onStdoutLine);
         });
         child.stderr.on("data", (chunk) => {
             const text = chunk.toString();
             stderr = appendCapped(stderr, text);
+
             if (options.onStderrLine) stderrRemainder = emitLines(stderrRemainder, text, options.onStderrLine);
         });
 
         child.once("error", (error) => {
             if (timeout) clearTimeout(timeout);
+
             options.signal?.removeEventListener("abort", abort);
             reject(
                 new ProcessExecutionError(
@@ -107,10 +117,15 @@ export function runProcess(command, args, options = {}) {
         });
         child.once("close", (exitCode) => {
             if (timeout) clearTimeout(timeout);
+
             options.signal?.removeEventListener("abort", abort);
+
             if (stdoutRemainder && options.onStdoutLine) options.onStdoutLine(stdoutRemainder);
+
             if (stderrRemainder && options.onStderrLine) options.onStderrLine(stderrRemainder);
+
             const result = { exitCode, stdout, stderr };
+
             if (exitCode === 0 && !timedOut && !aborted) resolve(result);
             else reject(new ProcessExecutionError(command, result, { timedOut, aborted }));
         });

@@ -44,11 +44,16 @@ export function isUserFacingError(error) {
 
 export function messageForError(error) {
     if (isUserFacingError(error)) return error.message;
+
     if (error instanceof DeliveryUnknownError || error?.name === "DeliveryUnknownError") return error.message;
+
     if (typeof error?.publicMessage === "string") return error.publicMessage;
+
     if (error?.name === "TimeoutError") return "The job timed out. Try a smaller file or a faster source URL.";
+
     if (error?.name === "AbortError" || error?.code === "ABORT_ERR") {
         return "The job was cancelled before it finished. Try again with a smaller file.";
     }
+
     return "The request failed while processing the media. Try another URL or a smaller file.";
 }

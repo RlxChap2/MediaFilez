@@ -68,12 +68,12 @@ The directory source is disabled by default. Hosted instances can impose authent
 `ReplySession` uses `open`, `committing`, `committed`, `failed`, and `unknown` states.
 
 - Status edits run only while open.
-- Commit sends final text and one attachment together through a length-delimited multipart stream.
+- Commit sends final text and attachments through length-delimited multipart streams. Collection delivery uses bounded attachment batches and can span the original reply and followups.
 - A rejected upload call triggers `fetchReply` verification.
 - A confirmed attachment counts as success.
 - Failed verification leaves the response unknown and blocks error replacement.
 
-The processing target is the minimum of Discord's interaction limit, the operator ceiling, and 500 MiB. Upload retries begin only after Discord confirms the expected attachment is absent. The upload payload disables mention parsing and sanitizes its content-disposition filename independently of earlier filename checks.
+The processing target respects Discord's interaction limit and the operator ceiling, then collection delivery applies a 24 MiB per-message file budget. Up to 10 attachments fit in a message; user-only installs are limited to the original reply and five followups. Upload retries begin only after Discord confirms the expected attachments are absent. A later failure preserves earlier confirmed messages. The upload payload disables mention parsing and sanitizes its content-disposition filenames independently of earlier filename checks.
 
 ## Tool resolution
 

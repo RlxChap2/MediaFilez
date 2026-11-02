@@ -19,22 +19,29 @@ export function getClient(createClient = () => Innertube.create({ retrieve_playe
             .then(createClient)
             .catch((error) => {
                 clientPromise = undefined;
+
                 throw error;
             });
     }
+
     return clientPromise;
 }
 
 function youtubeId(rawUrl) {
     const url = new URL(rawUrl);
+
     if (url.hostname === "youtu.be") return url.pathname.split("/").filter(Boolean)[0];
+
     if (url.pathname === "/watch") return url.searchParams.get("v");
+
     const match = url.pathname.match(/^\/(?:shorts|live|embed)\/([^/?]+)/);
+
     return match?.[1] ?? null;
 }
 
 function metadataFromInfo(info) {
     const basic = info.basic_info || {};
+
     return {
         title: basic.title,
         creator: basic.author,
@@ -53,14 +60,17 @@ export async function saveStream(stream, filePath, maxBytes, options) {
     const limiter = new Transform({
         transform(chunk, _encoding, callback) {
             bytes += chunk.byteLength;
+
             if (bytes > maxBytes) {
                 callback(
                     userError(`The source exceeded ${formatBytes(maxBytes)}.`, "FILE_TOO_LARGE", {
                         stopFallback: true,
                     }),
                 );
+
                 return;
             }
+
             options.onProgress?.({ downloadedBytes: bytes, totalBytes: null });
             callback(null, chunk);
         },
@@ -71,20 +81,25 @@ export async function saveStream(stream, filePath, maxBytes, options) {
         await fs.rename(partialPath, filePath);
     } catch (error) {
         await fs.rm(partialPath, { force: true }).catch(() => {});
+
         throw error;
     }
 }
 
 export async function downloadWithYouTubeJs(rawUrl, attemptDir, options = {}) {
     const id = youtubeId(rawUrl);
+
     if (!id) throw new DownloadMethodError("youtube-js", "The URL does not contain a YouTube video ID.");
 
     try {
         const info = await (await getClient()).getInfo(id);
         const metadata = metadataFromInfo(info);
+
         if (["image", "thumbnail"].includes(options.outputType)) {
             const thumbnailUrl = metadata.thumbnailUrl;
+
             if (!thumbnailUrl) throw new DownloadMethodError("youtube-js", "YouTube returned no thumbnail URL.");
+
             return {
                 ...(await downloadDirectHttp(thumbnailUrl, attemptDir, {
                     ...options,
@@ -105,6 +120,7 @@ export async function downloadWithYouTubeJs(rawUrl, attemptDir, options = {}) {
             quality: isAudio || !preferredHeight ? "best" : `${preferredHeight}p`,
             format: isAudio ? "any" : "mp4",
         });
+
         await saveStream(stream, filePath, options.maxBytes ?? config.maxDownloadBytes, options);
 
         return {
@@ -116,6 +132,7 @@ export async function downloadWithYouTubeJs(rawUrl, attemptDir, options = {}) {
         };
     } catch (error) {
         if (error?.name === "AbortError" || error?.stopFallback || error instanceof DownloadMethodError) throw error;
+
         throw new DownloadMethodError("youtube-js", error.message || "YouTube.js failed.", { cause: error });
     }
 }

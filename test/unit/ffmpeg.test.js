@@ -1,13 +1,47 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { prepareMediaForDiscord } from "../../src/media/processor.js";
 import { checkFFmpeg, compressImage, extractThumbnail, getMediaInfo, runFFmpeg } from "../../src/utils/ffmpeg.js";
 
+test("media inspection and conversion refuse network references inside local playlists", async (t) => {
+    if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+
+    const directory = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-local-media-"));
+    let requests = 0;
+    const server = http.createServer((_request, response) => {
+        requests++;
+        response.writeHead(404).end();
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    t.after(async () => {
+        await new Promise((resolve) => server.close(resolve));
+        await fs.rm(directory, { recursive: true, force: true });
+    });
+    const playlist = path.join(directory, "source.m3u8");
+    await fs.writeFile(
+        playlist,
+        `#EXTM3U\n#EXT-X-TARGETDURATION:1\n#EXTINF:1,\nhttp://127.0.0.1:${server.address().port}/segment.ts\n#EXT-X-ENDLIST\n`,
+    );
+
+    await assert.rejects(getMediaInfo(playlist));
+    const remote = `http://127.0.0.1:${server.address().port}/input.mp4`;
+    await assert.rejects(getMediaInfo(remote));
+
+    for (const onProgress of [undefined, () => {}]) {
+        await assert.rejects(runFFmpeg(["-i", playlist, "-f", "null", "-"], { onProgress }));
+        await assert.rejects(runFFmpeg(["-i", remote, "-f", "null", "-"], { onProgress }));
+    }
+
+    assert.equal(requests, 0);
+});
+
 test("extracts AAC audio without changing its encoded samples", async (t) => {
     if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-aac-copy-"));
     t.after(() => fs.rm(dir, { recursive: true, force: true }));
     const input = path.join(dir, "source.mp4");
@@ -51,6 +85,7 @@ test("extracts AAC audio without changing its encoded samples", async (t) => {
 
 test("fits oversized AAC only when compression is enabled", async (t) => {
     if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-aac-fit-"));
     t.after(() => fs.rm(dir, { recursive: true, force: true }));
     const input = path.join(dir, "source.mp4");
@@ -91,6 +126,7 @@ test("fits oversized AAC only when compression is enabled", async (t) => {
 
 test("extracts an image from a sub-second video", async (t) => {
     if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-short-video-"));
     const input = path.join(dir, "short.mp4");
     t.after(() => fs.rm(dir, { recursive: true, force: true }));
@@ -102,6 +138,7 @@ test("extracts an image from a sub-second video", async (t) => {
 
 test("auto fits low-bitrate video and reports transcoding progress", async (t) => {
     if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-fit-"));
     t.after(() => fs.rm(dir, { recursive: true, force: true }));
     const input = path.join(dir, "source.mp4");
@@ -160,6 +197,7 @@ test("auto fits low-bitrate video and reports transcoding progress", async (t) =
 
 test("auto fits oversized audio instead of rejecting the original", async (t) => {
     if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-audio-fit-"));
     t.after(() => fs.rm(dir, { recursive: true, force: true }));
     const input = path.join(dir, "source.wav");
@@ -192,6 +230,7 @@ test("auto fits oversized audio instead of rejecting the original", async (t) =>
 
 test("audio output extracts audio from a WebM video", async (t) => {
     if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-webm-audio-"));
     const input = path.join(dir, "source.webm");
     t.after(() => fs.rm(dir, { recursive: true, force: true }));
@@ -240,6 +279,7 @@ test("audio output extracts audio from a WebM video", async (t) => {
 
 test("auto fits oversized images instead of rejecting the original", async (t) => {
     if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-image-fit-"));
     t.after(() => fs.rm(dir, { recursive: true, force: true }));
     const input = path.join(dir, "source.bmp");
@@ -271,6 +311,7 @@ test("auto fits oversized images instead of rejecting the original", async (t) =
 
 test("image fitting rejects unsafe decoded dimensions", async (t) => {
     if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-image-dimensions-"));
     t.after(() => fs.rm(dir, { recursive: true, force: true }));
     const input = path.join(dir, "extreme.png");
@@ -284,6 +325,7 @@ test("image fitting rejects unsafe decoded dimensions", async (t) => {
 
 test("image fitting caps both output dimensions", async (t) => {
     if (!(await checkFFmpeg())) return t.skip("FFmpeg is not installed.");
+
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-image-aspect-"));
     t.after(() => fs.rm(dir, { recursive: true, force: true }));
     const input = path.join(dir, "tall.png");

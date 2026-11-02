@@ -25,7 +25,9 @@ test("prepares and commits every carousel item before cleaning the job directory
         commit: async () => assert.fail("must deliver the whole collection"),
         commitMany: async (items) => {
             assert.equal(items.length, 3);
+
             for (const item of items) assert.deepEqual(await fs.readFile(item.filePath), png);
+
             committed = items;
         },
         fail: async (error) => assert.fail(error.message),
@@ -38,6 +40,7 @@ test("prepares and commits every carousel item before cleaning the job directory
             downloadMedia: async (_url, tempDir) => {
                 directory = tempDir;
                 const items = [];
+
                 for (let i = 1; i <= 3; i++) {
                     const filePath = path.join(tempDir, `${i}.png`);
                     await fs.writeFile(filePath, png);
@@ -50,6 +53,7 @@ test("prepares and commits every carousel item before cleaning the job directory
                         extension: "png",
                     });
                 }
+
                 return { ...items[0], items, method: "fixture" };
             },
         },
@@ -130,6 +134,7 @@ test("expires a media request while it is still waiting in the queue", async () 
         pending: 0,
         add(_task, options) {
             assert.ok(options?.signal, "the queue entry should receive a deadline signal");
+
             return new Promise((_resolve, reject) => {
                 options.signal.addEventListener("abort", () => reject(options.signal.reason), { once: true });
             });
@@ -167,6 +172,7 @@ test("reports a job timeout when a running media request is aborted", async () =
             signal: controller.signal,
             downloadMedia: async () => {
                 attemptedDownload = true;
+
                 throw new DOMException("cancelled download", "AbortError");
             },
         },

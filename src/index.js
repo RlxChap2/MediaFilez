@@ -10,6 +10,7 @@ requireConfig(["botToken"]);
 await cleanupStaleTempDirs();
 
 const ffmpegReady = await checkFFmpeg();
+
 if (!ffmpegReady) {
     log.warn(
         "FFmpeg or ffprobe was not found. Video fitting, thumbnails, and audio extraction will fail until it is installed.",

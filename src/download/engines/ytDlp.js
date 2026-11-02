@@ -12,8 +12,10 @@ import { ytDlpFormatSelector } from "../videoQuality.js";
 
 export function resolveYtDlpPath() {
     if (config.ytdlpPath) return config.ytdlpPath;
+
     const entry = fileURLToPath(import.meta.resolve("youtube-dl-exec"));
     const packageRoot = path.resolve(path.dirname(entry), "..");
+
     return path.join(packageRoot, "bin", process.platform === "win32" ? "yt-dlp.exe" : "yt-dlp");
 }
 
@@ -22,19 +24,23 @@ function cleanError(error) {
         .split(/\r?\n/)
         .map((line) => line.trim())
         .filter(Boolean);
+
     return lines.findLast((line) => line.startsWith("ERROR:")) || lines.at(-1) || error.message;
 }
 
 async function readMetadata(attemptDir) {
     const files = await fs.readdir(attemptDir).catch(() => []);
     const name = files.find((file) => file.endsWith(".info.json"));
+
     if (!name) return null;
 
     const raw = await fs.readFile(path.join(attemptDir, name), "utf8").catch(() => null);
+
     if (!raw) return null;
 
     try {
         const data = JSON.parse(raw);
+
         return {
             title: data.title,
             creator: data.uploader || data.channel,
@@ -60,6 +66,7 @@ async function readMetadata(attemptDir) {
 function progressHandler(options) {
     return (line) => {
         if (!line.startsWith("download:")) return;
+
         const [, downloaded, total, percent] = line.split("|");
         options.onProgress?.({
             downloadedBytes: Number.parseInt(downloaded, 10) || 0,
@@ -71,8 +78,10 @@ function progressHandler(options) {
 
 function shouldUseCookies(rawUrl) {
     if (config.ytdlpCookiesForYoutube) return true;
+
     try {
         const host = new URL(rawUrl).hostname.toLowerCase();
+
         return !(
             host === "youtu.be" ||
             host === "youtube.com" ||
@@ -97,6 +106,7 @@ async function prepareCookieFile(attemptDir, rawUrl) {
     const contents = await fs.readFile(config.mediaCookiesFile);
     await fs.writeFile(cookieFile, contents, { flag: "wx", mode: 0o600 });
     await fs.chmod(cookieFile, 0o600);
+
     return cookieFile;
 }
 
@@ -158,7 +168,9 @@ export async function downloadWithYtDlp(rawUrl, attemptDir, options = {}) {
             `${isInstagramPost(rawUrl) ? "%(playlist_index)03d_" : ""}%(title).120B_%(id).40B.%(ext)s`,
         ),
     ];
+
     if (config.ytdlpImpersonate) args.push("--impersonate", config.ytdlpImpersonate);
+
     if (cookieFile) args.push("--cookies", cookieFile);
     else if (useCookies && config.ytdlpCookiesFromBrowser) {
         args.push("--cookies-from-browser", config.ytdlpCookiesFromBrowser);
@@ -168,11 +180,14 @@ export async function downloadWithYtDlp(rawUrl, attemptDir, options = {}) {
         args.push("--skip-download", "--write-thumbnail", "--convert-thumbnails", "jpg");
     } else {
         args.push("--format", ytDlpFormatSelector(outputType, options.targetBytes));
+
         if (outputType !== "audio") args.push("--merge-output-format", "mp4");
     }
+
     args.push("--", rawUrl);
 
     let processError = null;
+
     try {
         await (options.processRunner ?? runProcess)(resolveYtDlpPath(), args, {
             timeoutMs: config.ytdlpTimeoutMs,
@@ -182,12 +197,14 @@ export async function downloadWithYtDlp(rawUrl, attemptDir, options = {}) {
     } catch (error) {
         if (error instanceof ProcessExecutionError && error.aborted)
             throw Object.assign(new Error("The download was cancelled."), { name: "AbortError" });
+
         processError = error;
     }
 
     if (isInstagramPost(rawUrl) && processError) {
         throw collectionFailure(new DownloadMethodError("yt-dlp", cleanError(processError), { cause: processError }));
     }
+
     const recover = isInstagramPost(rawUrl) ? recoverMediaCollection : recoverArtifact;
     const artifact = await recover(attemptDir, {
         outputType,
@@ -195,6 +212,7 @@ export async function downloadWithYtDlp(rawUrl, attemptDir, options = {}) {
         signal: options.signal,
         onCollection: options.onCollection,
     });
+
     if (artifact) {
         return {
             ...artifact,
@@ -204,12 +222,16 @@ export async function downloadWithYtDlp(rawUrl, attemptDir, options = {}) {
             recoveredFromProcessError: Boolean(processError),
         };
     }
+
     if (!processError) throw new DownloadMethodError("yt-dlp", "yt-dlp finished without a playable file.");
+
     const message = cleanError(processError);
+
     if (/larger than max-filesize|exceeds.*filesize/i.test(message)) {
         throw userError(`The source is larger than ${formatBytes(maxBytes)}.`, "FILE_TOO_LARGE", {
             stopFallback: true,
         });
     }
+
     throw new DownloadMethodError("yt-dlp", message, { cause: processError });
 }

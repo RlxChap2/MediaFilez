@@ -2,7 +2,7 @@
 
 MediaFilez downloads public media into Discord through one `/media` command. It tries ordered engines, validates every result, fits oversized video, audio, or images to the current interaction limit, and streams confirmed attachments without buffering whole files in memory.
 
-Instagram carousel posts return all photos and videos, up to 50 files. Messages contain at most 10 attachments and split earlier when the combined file size reaches 24 MiB, leaving room below Discord's documented 25 MiB request limit. User-only installs use at most the original reply and five followups; file fitting reduces individual sizes to fit that limit. A later delivery failure preserves confirmed messages and reports how many files were confirmed. Mixed posts follow the resolver's grouping of videos and photos, which may differ from Instagram's slide order.
+Instagram carousel downloads preserve the media exposed by the successful extractor, up to 50 files. Complete source discovery is not guaranteed for every fallback. Messages contain at most 10 attachments and split earlier when the combined file size reaches 24 MiB, leaving room below Discord's documented 25 MiB request limit. User-only installs use at most the original reply and five followups; file fitting reduces individual sizes to fit that limit. A later delivery failure preserves confirmed messages and reports how many files were confirmed. Cobalt picker collections keep their returned order; other resolvers may omit ordering information.
 
 See Discord's [message request limits](https://docs.discord.com/developers/resources/message#create-message) and [interaction followup limits](https://docs.discord.com/developers/interactions/receiving-and-responding#create-followup-message).
 
@@ -32,7 +32,7 @@ Private results use Discord's ephemeral interaction reply, so they do not depend
 
 ## Discord reply
 
-The original interaction shows queue position, the active engine, transfer progress when an engine reports it, and the processing or upload stage. A successful reply contains the attachment, its final size, and a `Nerd Info` button.
+The original interaction shows queue position, transfer progress when available, and the processing or upload stage. Successful replies contain the attachments, their final sizes, and a `Nerd Info` button. Normal progress keeps engine details out of the reply; `Nerd Info` includes them.
 
 `Nerd Info` opens an ephemeral message with the filename, selected engine, download time, processing time, upload target, final size, and any processing or recovery note. Its small payload lives in the button ID, so the button still works after a bot restart. It does not contain the source URL, cookies, or credentials.
 
@@ -40,7 +40,7 @@ The original interaction shows queue position, the active engine, transfer progr
 
 - `/media` includes an `Auto` output that accepts validated video, audio, or image media and chooses the matching processing path.
 - Local installs include FFmpeg and FFprobe packages. `pnpm install` also fetches a SHA-256 verified gallery-dl build into `.tools` when no operator path is supplied.
-- Instagram tries VideoDropper first using its encrypted URL protocol. Its resolver has a 20-second deadline, and returned files retain the normal URL, byte-limit and artifact checks. Set `DISABLED_ENGINES=videodropper` to omit it. Instagram also has a direct embed-proxy fallback. The default converts `instagram.com` to `kkkinstagram.com`, then downloads the returned media through the same redirect, SSRF, size, and signature checks as any other URL.
+- Instagram uses the configured local extractors, Cobalt instances, and an optional embed-proxy fallback. The default converts `instagram.com` to `kkkinstagram.com`, then downloads the returned media through the same redirect, SSRF, size, and signature checks as any other URL.
 - Unknown pages gain a metadata extractor for Open Graph, Twitter card, and HTML media tags.
 - Share-link wrappers and JSON-LD `contentUrl` fields feed the guarded direct downloader. Reddit posts first use the first-party embed path, then a configurable public embed relay when Reddit blocks the bot server's address.
 - Multiple Cobalt endpoints are tried in order. A failed endpoint enters a short cooldown so queued jobs can skip the dead host.
@@ -60,17 +60,17 @@ Engine order depends on the host and requested output.
 
 `Auto` starts with the extractor best suited to the host, then falls back through the remaining engines. Direct file URLs use direct HTTP first. Page metadata checks video, audio, and image fields in that order. File signatures and FFprobe streams determine the final media type whenever available, and validation rejects unknown media.
 
-| Source                   | Default order                                                            |
-| ------------------------ | ------------------------------------------------------------------------ |
-| Direct media URL         | direct HTTP                                                              |
-| YouTube                  | yt-dlp, YouTube.js, Cobalt, page metadata                                |
-| Instagram auto or image  | VideoDropper, gallery-dl, yt-dlp, Instagram proxy, Cobalt, page metadata |
-| Instagram video or audio | VideoDropper, yt-dlp, Instagram proxy, Cobalt, gallery-dl, page metadata |
-| Pinterest, Flickr, Imgur | gallery-dl, yt-dlp, Cobalt, page metadata                                |
-| Reddit auto or image     | Reddit embed, Reddit proxy, gallery-dl, yt-dlp, Cobalt, page metadata    |
-| Reddit video or audio    | Cobalt, yt-dlp, Reddit embed, Reddit proxy, gallery-dl, page metadata    |
-| Other Cobalt services    | Cobalt, yt-dlp, gallery-dl, page metadata                                |
-| Unknown page             | page metadata, direct HTTP                                               |
+| Source                   | Default order                                                         |
+| ------------------------ | --------------------------------------------------------------------- |
+| Direct media URL         | direct HTTP                                                           |
+| YouTube                  | yt-dlp, YouTube.js, Cobalt, page metadata                             |
+| Instagram auto or image  | gallery-dl, yt-dlp, Instagram proxy, Cobalt, page metadata            |
+| Instagram video or audio | yt-dlp, Instagram proxy, Cobalt, gallery-dl, page metadata            |
+| Pinterest, Flickr, Imgur | gallery-dl, yt-dlp, Cobalt, page metadata                             |
+| Reddit auto or image     | Reddit embed, Reddit proxy, gallery-dl, yt-dlp, Cobalt, page metadata |
+| Reddit video or audio    | Cobalt, yt-dlp, Reddit embed, Reddit proxy, gallery-dl, page metadata |
+| Other Cobalt services    | Cobalt, yt-dlp, gallery-dl, page metadata                             |
+| Unknown page             | page metadata, direct HTTP                                            |
 
 Each engine writes into its own attempt directory. MediaFilez checks file signatures and FFprobe streams before committing a result. A fallback starts only after the prior attempt stops and leaves no valid file. A process error does not discard a complete file left behind.
 
@@ -236,7 +236,7 @@ Start with `.env.example`. Size values accept `b`, `kb`, `kib`, `mb`, `mib`, `gb
 | `PAGE_METADATA_ENABLED`      | `true`                 | Enables generic page metadata extraction                                                           |
 | `PAGE_METADATA_MAX_SIZE`     | `1mb`                  | Maximum HTML read by the metadata engine                                                           |
 | `INSTAGRAM_PROXY_HOSTS`      | `www.kkkinstagram.com` | Ordered Instagram relay hosts; use `none` to disable                                               |
-| `INSTAGRAM_PROXY_FIRST`      | `false`                | Prefer the relay after VideoDropper for Instagram video/auto; the relay receives the URL           |
+| `INSTAGRAM_PROXY_FIRST`      | `false`                | Prefer the relay for Instagram video/auto; the relay receives the URL                              |
 | `REDDIT_PROXY_HOSTS`         | `redditez.com`         | Ordered Reddit embed relay hosts; use `none` to disable                                            |
 | `DISABLED_ENGINES`           | empty                  | Engine names removed from every plan                                                               |
 
@@ -295,3 +295,13 @@ MediaFilez is licensed under AGPL-3.0-only. See [LICENSE](LICENSE).
 - [Security Policy](SECURITY.md) for private vulnerability reporting
 
 Self-hosters are independent operators and must publish policies that match their actual deployment.
+
+## Terms, privacy, and security
+
+Read [Terms of Service](TERMS_OF_SERVICE.md), [Privacy Policy](PRIVACY_POLICY.md), and [Security policy](SECURITY.md) before operating a hosted deployment. The notices distinguish the standalone bot, account API, and worker storage. Configure provider permissions, retention/deletion procedures, and deployment isolation for the services you actually run. The documents do not certify a deployment or remove mandatory legal obligations.
+
+## Optional Grabfy resolver
+
+Grabfy is disabled by default. In the executing bot or worker, set `GRABFY_ENABLED=true` only after reviewing [provider terms](https://grabfy.com/terms-of-service/) and [privacy](https://grabfy.com/privacy-policy/) and establishing permission for the intended API/bot use. Enabled Grabfy is preferred for Instagram posts/Reels; `DISABLED_ENGINES=grabfy` also removes it from the plan. `GRABFY_TIMEOUT_MS` bounds resolution (default 20000, configurable 1000–60000 ms); existing job/transfer deadlines and aggregate limits still apply. Every selected carousel item is validated and downloaded in provider order. Query tracking parameters, source-platform cookies and application credentials are not sent to the resolver.
+
+The API process does not run download engines; configure the Worker deployment that executes its jobs. Changing API environment variables alone does not enable this feature. Grabfy has no independently verified API license, retention schedule or security audit in this integration. Read the updated service policies before enabling it.

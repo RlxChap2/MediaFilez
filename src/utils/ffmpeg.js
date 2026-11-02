@@ -32,6 +32,7 @@ function missingFfmpegError(binary) {
 
 async function runBinary(binary, label, args, options = {}) {
     const timeout = options.timeoutMs ?? config.ffmpegTimeoutMs;
+
     try {
         const { stdout, stderr } = await execFileAsync(binary, args, {
             timeout,
@@ -39,31 +40,43 @@ async function runBinary(binary, label, args, options = {}) {
             maxBuffer: 20 * 1024 * 1024,
             windowsHide: true,
         });
+
         return { stdout, stderr };
     } catch (error) {
         if (error.name === "AbortError" || error.code === "ABORT_ERR") throw error;
+
         if (error.killed || error.signal === "SIGTERM") {
             throw userError(`${label} timed out while processing this file.`, "PROCESS_TIMEOUT");
         }
+
         if (error.code === "ENOENT") {
             throw missingFfmpegError(label);
         }
+
         throw new Error(`${label} failed: ${error.stderr || error.message}`);
     }
 }
 
 export async function runFFmpeg(args, options = {}) {
     if (!options.onProgress) {
-        return await runBinary(resolveFFmpegPaths().ffmpeg, "FFmpeg", ["-hide_banner", ...args], options);
+        return await runBinary(
+            resolveFFmpegPaths().ffmpeg,
+            "FFmpeg",
+            ["-hide_banner", "-protocol_whitelist", "file,pipe", ...args],
+            options,
+        );
     }
 
     const progress = {};
     const reportProgress = (line) => {
         const separator = line.indexOf("=");
+
         if (separator === -1) return;
+
         const key = line.slice(0, separator);
         const value = line.slice(separator + 1);
         progress[key] = value;
+
         if (key !== "progress") return;
 
         const processedSeconds = Math.max(0, Number.parseInt(progress.out_time_us || "0", 10) / 1_000_000);
@@ -82,7 +95,7 @@ export async function runFFmpeg(args, options = {}) {
     try {
         return await runProcess(
             resolveFFmpegPaths().ffmpeg,
-            ["-hide_banner", "-nostats", "-progress", "pipe:1", ...args],
+            ["-hide_banner", "-protocol_whitelist", "file,pipe", "-nostats", "-progress", "pipe:1", ...args],
             {
                 timeoutMs: options.timeoutMs ?? config.ffmpegTimeoutMs,
                 signal: options.signal,
@@ -93,19 +106,28 @@ export async function runFFmpeg(args, options = {}) {
         if (error instanceof ProcessExecutionError && error.aborted) {
             throw Object.assign(new Error("FFmpeg was cancelled."), { name: "AbortError" });
         }
+
         if (error instanceof ProcessExecutionError && error.timedOut) {
             throw userError("FFmpeg timed out while processing this file.", "PROCESS_TIMEOUT");
         }
+
         if (error.cause?.code === "ENOENT") throw missingFfmpegError("FFmpeg");
+
         throw new Error(`FFmpeg failed: ${error.stderr || error.message}`);
     }
 }
 
 async function runFFprobe(args, options = {}) {
-    const { stdout } = await runBinary(resolveFFmpegPaths().ffprobe, "FFprobe", ["-v", "quiet", ...args], {
-        ...options,
-        timeoutMs: 30_000,
-    });
+    const { stdout } = await runBinary(
+        resolveFFmpegPaths().ffprobe,
+        "FFprobe",
+        ["-v", "quiet", "-protocol_whitelist", "file,pipe", ...args],
+        {
+            ...options,
+            timeoutMs: 30_000,
+        },
+    );
+
     return stdout;
 }
 
@@ -139,14 +161,17 @@ export async function extractThumbnail(inputPath, outputDir, outputName = "thumb
 
     for (const seek of ["00:00:01", "00:00:00"]) {
         await fs.rm(outputPath, { force: true });
+
         try {
             await runFFmpeg(["-ss", seek, "-i", inputPath, "-frames:v", "1", "-q:v", "2", "-y", outputPath], options);
             await fs.access(outputPath);
+
             return outputPath;
         } catch (error) {
             if (error.name === "AbortError" || error.code === "ABORT_ERR" || error.code === "PROCESS_TIMEOUT") {
                 throw error;
             }
+
             lastError = error;
         }
     }
@@ -159,18 +184,26 @@ function audioBitrateForTarget(duration, targetSizeBytes) {
 
     const availableBitsPerSecond = Math.floor((targetSizeBytes * 8 * 0.9) / duration);
     const kbps = Math.floor(availableBitsPerSecond / 1000);
+
     return Math.min(192, Math.max(48, kbps));
 }
 
 export async function extractOriginalAudio(inputPath, outputDir, options = {}) {
     const info = await getMediaInfo(inputPath, options);
+
     if (!info.hasAudio) throw userError("The downloaded media does not contain an audio stream.", "NO_AUDIO");
+
     const extension = { aac: "m4a", alac: "m4a", mp3: "mp3" }[info.audioCodec];
+
     if (!extension) return null;
+
     let outputPath = path.join(outputDir, `extracted-audio.${extension}`);
+
     if (path.resolve(outputPath) === path.resolve(inputPath))
         outputPath = path.join(outputDir, `extracted-audio-copy.${extension}`);
+
     await runFFmpeg(["-i", inputPath, "-map", "0:a:0", "-vn", "-c:a", "copy", "-y", outputPath], options);
+
     return outputPath;
 }
 
@@ -185,11 +218,13 @@ export async function extractOriginalAudio(inputPath, outputDir, options = {}) {
  */
 export async function extractAudio(inputPath, outputDir, targetSizeBytes, options = {}) {
     const info = await getMediaInfo(inputPath, options);
+
     if (!info.hasAudio) {
         throw userError("The downloaded media does not contain an audio stream.", "NO_AUDIO");
     }
 
     const kbps = audioBitrateForTarget(info.duration, targetSizeBytes);
+
     if (targetSizeBytes && kbps <= 48 && info.duration && (48_000 * info.duration) / 8 > targetSizeBytes) {
         throw userError(
             `The audio is too long to fit inside ${formatBytes(targetSizeBytes)} at usable quality.`,
@@ -198,6 +233,7 @@ export async function extractAudio(inputPath, outputDir, targetSizeBytes, option
     }
 
     let outputPath = path.join(outputDir, options.outputFileName || "audio.mp3");
+
     if (path.resolve(outputPath) === path.resolve(inputPath)) {
         outputPath = path.join(outputDir, "converted-audio.mp3");
     }
@@ -222,6 +258,7 @@ export async function extractAudio(inputPath, outputDir, targetSizeBytes, option
     );
 
     await fs.access(outputPath);
+
     return outputPath;
 }
 
@@ -236,6 +273,7 @@ export async function extractAudio(inputPath, outputDir, targetSizeBytes, option
 export async function compressImage(inputPath, outputDir, targetSizeBytes, options = {}) {
     const info = await getMediaInfo(inputPath, options);
     const imagePixels = info.width * info.height;
+
     if (
         !Number.isSafeInteger(imagePixels) ||
         info.width <= 0 ||
@@ -252,9 +290,11 @@ export async function compressImage(inputPath, outputDir, targetSizeBytes, optio
 
     const baseName = path.basename(inputPath, path.extname(inputPath));
     let outputPath = path.join(outputDir, `fit-${baseName}.jpg`);
+
     if (path.resolve(outputPath) === path.resolve(inputPath)) {
         outputPath = path.join(outputDir, `fit-${baseName}-converted.jpg`);
     }
+
     const attempts = [
         { maxWidth: 4096, quality: 2 },
         { maxWidth: 4096, quality: 5 },
@@ -288,14 +328,17 @@ export async function compressImage(inputPath, outputDir, targetSizeBytes, optio
             options,
         );
         const stat = await fs.stat(outputPath);
+
         if (stat.size <= targetSizeBytes) {
             log.info(`Image fitting produced ${formatBytes(stat.size)} at up to ${attempt.maxWidth}px.`);
+
             return outputPath;
         }
     }
 
     const stat = await fs.stat(outputPath);
     await fs.rm(outputPath, { force: true });
+
     throw userError(
         `The compressed image is still ${formatBytes(stat.size)}, above the upload target of ${formatBytes(targetSizeBytes)}.`,
         "FILE_TOO_LARGE",
@@ -313,9 +356,11 @@ export async function compressImage(inputPath, outputDir, targetSizeBytes, optio
 function videoBitratesForTarget(info, targetSizeBytes, scale = 0.9) {
     const availableBitrate = Math.floor((targetSizeBytes * 8 * scale) / info.duration);
     let audioBitrate = 0;
+
     if (info.hasAudio) {
         audioBitrate = Math.min(96_000, Math.max(24_000, Math.floor(availableBitrate * 0.16)));
     }
+
     const videoBitrate = availableBitrate - audioBitrate;
 
     if (videoBitrate < 24_000) {
@@ -330,32 +375,44 @@ function videoBitratesForTarget(info, targetSizeBytes, scale = 0.9) {
 
 function maxWidthForBitrate(videoKbps) {
     if (videoKbps < 80) return 320;
+
     if (videoKbps < 160) return 480;
+
     if (videoKbps < 350) return 640;
+
     if (videoKbps < 700) return 854;
+
     return 1280;
 }
 
 async function tryFastFit(label, args, outputPath, targetSizeBytes, options) {
     await fs.rm(outputPath, { force: true });
+
     try {
         await runFFmpeg([...args, "-y", outputPath], options);
         const stat = await fs.stat(outputPath);
+
         if (stat.size <= targetSizeBytes) {
             log.info(`${label} fit the video at ${formatBytes(stat.size)}.`);
+
             return outputPath;
         }
+
         log.info(`${label} produced ${formatBytes(stat.size)}; a smaller result is still needed.`);
     } catch (error) {
         if (error.name === "AbortError" || error.code === "ABORT_ERR") throw error;
+
         log.warn(`${label} was not usable: ${error.message}`);
     }
+
     await fs.rm(outputPath, { force: true });
+
     return null;
 }
 
 async function tryRemux(inputPath, outputDir, baseName, targetSizeBytes, options) {
     const outputPath = path.join(outputDir, `fit-remux-${baseName}.mp4`);
+
     return await tryFastFit(
         "Lossless remux",
         [
@@ -380,6 +437,7 @@ async function tryRemux(inputPath, outputDir, baseName, targetSizeBytes, options
 
 async function tryAudioFit(inputPath, outputDir, baseName, info, targetSizeBytes, options) {
     if (!info.hasAudio) return null;
+
     const totalTargetBitrate = Math.floor((targetSizeBytes * 8 * 0.96) / info.duration);
     const estimatedVideoBitrate = info.videoBitrate || Math.max(0, info.bitrate - (info.audioBitrate || 0));
     const audioKbps = Math.min(96, Math.max(24, Math.floor((totalTargetBitrate - estimatedVideoBitrate) / 1000)));
@@ -416,6 +474,7 @@ async function tryAudioFit(inputPath, outputDir, baseName, info, targetSizeBytes
             targetSizeBytes,
             options,
         );
+
         if (result) return result;
     }
 
@@ -460,6 +519,7 @@ async function compressAttempt(inputPath, outputPath, info, targetSizeBytes, sca
 
     log.info(`Compressing video to ${videoKbps}k video bitrate.`);
     await runFFmpeg(args, { ...options, durationSeconds: info.duration });
+
     return await fs.stat(outputPath);
 }
 
@@ -469,7 +529,9 @@ function remuxCouldFit(info, targetSizeBytes) {
 
 function audioOnlyFitCouldWork(info, targetSizeBytes) {
     if (!info.hasAudio || !info.videoBitrate || !info.duration) return info.hasAudio;
+
     const estimatedVideoBytes = (info.videoBitrate * info.duration) / 8;
+
     return estimatedVideoBytes <= targetSizeBytes * 0.98;
 }
 
@@ -488,9 +550,11 @@ export async function compressVideo(inputPath, outputDir, targetSizeBytes, optio
     }
 
     const baseName = path.basename(inputPath, path.extname(inputPath));
+
     if (remuxCouldFit(info, targetSizeBytes)) {
         await options.onStage?.("Trying a lossless container fit");
         const remuxed = await tryRemux(inputPath, outputDir, baseName, targetSizeBytes, options);
+
         if (remuxed) return remuxed;
     } else {
         log.info("Skipping lossless remux because the source is far above the upload target.");
@@ -499,6 +563,7 @@ export async function compressVideo(inputPath, outputDir, targetSizeBytes, optio
     if (audioOnlyFitCouldWork(info, targetSizeBytes)) {
         await options.onStage?.("Trying a fast audio-only fit");
         const audioFit = await tryAudioFit(inputPath, outputDir, baseName, info, targetSizeBytes, options);
+
         if (audioFit) return audioFit;
     } else {
         log.info("Skipping audio-only fitting because the copied video stream cannot fit the upload target.");
@@ -532,15 +597,18 @@ export async function checkFFmpeg() {
             execFileAsync(binaries.ffprobe, ["-version"], { timeout: 5000, windowsHide: true }),
         ]);
         ffmpegAvailability = true;
+
         return ffmpegAvailability;
     } catch {
         ffmpegAvailability = false;
+
         return ffmpegAvailability;
     }
 }
 
 export async function requireFFmpeg(featureName) {
     if (await checkFFmpeg()) return;
+
     throw userError(
         `FFmpeg is unavailable, so ${featureName} cannot run. Reinstall dependencies or set FFMPEG_PATH and FFPROBE_PATH.`,
         "FFMPEG_MISSING",

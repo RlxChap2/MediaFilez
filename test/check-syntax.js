@@ -13,6 +13,7 @@ async function listJsFiles(dir) {
 
     for (const entry of entries) {
         const fullPath = path.join(dir, entry.name);
+
         if (entry.isDirectory()) {
             files.push(...(await listJsFiles(fullPath)));
         } else if (entry.isFile() && entry.name.endsWith(".js")) {
@@ -24,6 +25,7 @@ async function listJsFiles(dir) {
 }
 
 const files = [];
+
 for (const scanRoot of scanRoots) {
     files.push(...(await listJsFiles(path.join(root, scanRoot))));
 }

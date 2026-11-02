@@ -15,12 +15,15 @@ import {
 
 async function copyImage(input, tempDir, outputName) {
     const outputPath = path.join(tempDir, outputName);
+
     if (path.resolve(input.filePath) !== path.resolve(outputPath)) await fs.copyFile(input.filePath, outputPath);
+
     return outputPath;
 }
 
 function ensureFits(file, maxAttachmentBytes, outputType) {
     if (file.sizeBytes <= maxAttachmentBytes) return;
+
     throw userError(
         `The ${outputType} is ${formatBytes(file.sizeBytes)}, above the configured upload target of ${formatBytes(maxAttachmentBytes)}.`,
         "FILE_TOO_LARGE",
@@ -44,12 +47,14 @@ export async function prepareMediaForDiscord(download, options) {
         signal,
     } = options;
     const outputType = requestedOutputType === "auto" ? download.mediaKind : requestedOutputType;
+
     if (!["video", "audio", "image", "thumbnail"].includes(outputType)) {
         throw userError(
             "The downloaded file type could not be detected as video, audio, or image.",
             "UNSUPPORTED_MEDIA",
         );
     }
+
     let outputPath = download.filePath;
     let outputName = download.fileName;
     let note = null;
@@ -57,6 +62,7 @@ export async function prepareMediaForDiscord(download, options) {
     if (outputType === "video") {
         if (download.mediaKind === "image")
             throw userError("The source is an image. Choose image output.", "WRONG_MEDIA_TYPE");
+
         if (download.sizeBytes > maxAttachmentBytes) {
             if (!allowCompression) {
                 throw userError(
@@ -64,6 +70,7 @@ export async function prepareMediaForDiscord(download, options) {
                     "FILE_TOO_LARGE",
                 );
             }
+
             await requireFFmpeg("video fitting");
             const fittingDetail = "Fitting the video to a reliable Discord upload size";
             await onStatus?.({ phase: "processing", detail: fittingDetail });
@@ -81,6 +88,7 @@ export async function prepareMediaForDiscord(download, options) {
     if (outputType === "audio") {
         const extension = (download.extension || path.extname(download.fileName).slice(1)).toLowerCase();
         const canSendOriginal = download.isAudioOnly || download.mediaKind === "audio";
+
         if (canSendOriginal && download.sizeBytes <= maxAttachmentBytes) {
             outputName = makeSafeFileName(download.fileName, "audio", extension || "m4a");
             note = "downloaded as audio";
@@ -91,10 +99,12 @@ export async function prepareMediaForDiscord(download, options) {
                     "FILE_TOO_LARGE",
                 );
             }
+
             await requireFFmpeg(canSendOriginal ? "audio fitting" : "audio extraction");
             const original = canSendOriginal
                 ? null
                 : await extractOriginalAudio(download.filePath, tempDir, { signal });
+
             if (original && (await fs.stat(original)).size <= maxAttachmentBytes) {
                 outputPath = original;
                 outputName = path.basename(original);
@@ -106,6 +116,7 @@ export async function prepareMediaForDiscord(download, options) {
                         "FILE_TOO_LARGE",
                     );
                 }
+
                 await onStatus?.({
                     phase: "processing",
                     detail: canSendOriginal ? "Fitting audio to Discord" : "Extracting audio",
@@ -134,6 +145,7 @@ export async function prepareMediaForDiscord(download, options) {
         }
 
         const imageSize = (await fs.stat(outputPath)).size;
+
         if (imageSize > maxAttachmentBytes) {
             if (!allowCompression) {
                 throw userError(
@@ -141,6 +153,7 @@ export async function prepareMediaForDiscord(download, options) {
                     "FILE_TOO_LARGE",
                 );
             }
+
             await requireFFmpeg("image fitting");
             await onStatus?.({ phase: "processing", detail: "Fitting image to Discord" });
             outputPath = await compressImage(outputPath, tempDir, Math.floor(maxAttachmentBytes * 0.98), {
@@ -154,6 +167,7 @@ export async function prepareMediaForDiscord(download, options) {
 
     const file = await describeFile(outputPath, outputName, outputType);
     ensureFits(file, maxAttachmentBytes, outputType);
+
     return { ...file, note };
 }
 
