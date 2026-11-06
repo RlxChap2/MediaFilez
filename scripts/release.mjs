@@ -34,7 +34,7 @@ const response = await fetch(`${base}/releases`, {
     body: JSON.stringify({
         tag_name: tag,
         target_commitish: process.env.GITHUB_SHA,
-        name: tag,
+        name: `MediaFilez - ${tag}`,
         body: readFileSync(notes, "utf8"),
         draft: false,
         prerelease: false,
