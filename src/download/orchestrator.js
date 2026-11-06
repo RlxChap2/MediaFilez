@@ -4,7 +4,7 @@ import { config } from "../config.js";
 import { DownloadMethodError, UserFacingError, userError } from "../utils/errors.js";
 import { assertPublicHttpUrl } from "../utils/security.js";
 import { log } from "../utils/logger.js";
-import { planEngines } from "./planner.js";
+import { classifySource, planEngines } from "./planner.js";
 import { recoverArtifact, validateArtifact } from "./artifact.js";
 import { commitMediaCollection, validateMediaCollection, collectionFailure } from "./collection.js";
 import { downloadDirectHttp } from "./engines/directHttp.js";
@@ -51,7 +51,8 @@ function abortError() {
     );
 }
 
-function publicFailure(attempts, outputType) {
+function publicFailure(rawUrl, attempts, outputType) {
+    const source = classifySource(rawUrl);
     const messages = attempts.map((attempt) => attempt.error).join(" ");
     const engines = [...new Set(attempts.map((attempt) => attempt.engine))].join(", ");
 
@@ -69,6 +70,14 @@ function publicFailure(attempts, outputType) {
 
     if (outputType !== "auto" && /contains image media, not video|returned image media/i.test(messages)) {
         return "The source is an image. Choose image output and try again.";
+    }
+
+    if (source.instagramStory) {
+        return "Instagram did not return the requested story. It may have expired or may not be accessible.";
+    }
+
+    if (source.youtube && /sign in to confirm you(?:['’])?re not a bot/i.test(messages)) {
+        return "YouTube requested verification for this download. Try again later.";
     }
 
     if (/account authentication|cookies|login required|empty media response/i.test(messages)) {
@@ -251,7 +260,7 @@ export async function downloadMedia(rawUrl, jobDir, options = {}) {
         );
     }
 
-    const error = userError(publicFailure(attempts, outputType), "DOWNLOAD_FAILED");
+    const error = userError(publicFailure(rawUrl, attempts, outputType), "DOWNLOAD_FAILED");
     error.attempts = attempts;
 
     throw error;
