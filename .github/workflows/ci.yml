@@ -30,7 +30,7 @@ jobs:
                   persist-credentials: false
 
             - name: Install pnpm
-              uses: pnpm/action-setup@f520eceda224fe1a4aed5a2a27a194379a409996
+              uses: pnpm/action-setup@5eea8caf49c844361c1e9ddc1324e179c54b58e9
 
             - name: Set up Node.js
               uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
@@ -110,13 +110,13 @@ jobs:
                   node-version: 24
             - id: version
               run: node scripts/release.mjs validate
-            - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
-            - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+            - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+            - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
               with:
                   registry: ghcr.io
                   username: ${{ github.actor }}
                   password: ${{ secrets.GITHUB_TOKEN }}
-            - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
+            - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc
               id: image
               with:
                   context: .
@@ -168,8 +168,8 @@ jobs:
             - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
               with:
                   node-version: 24
-            - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
-            - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9
+            - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069
+            - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550
               with:
                   registry: ghcr.io
                   username: ${{ github.actor }}
