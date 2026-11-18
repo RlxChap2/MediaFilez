@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import dns from "node:dns";
 import fs from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
@@ -15,6 +16,10 @@ const PNG = Buffer.from(
 
 for (const scenario of ["complete", "failed-child", "aggregate-limit", "default-limit", "count-limit"]) {
     test(`Cobalt Instagram picker handles ${scenario} without truncating an album`, async (t) => {
+        t.mock.method(dns.promises, "lookup", async (hostname) => {
+            assert.equal(hostname, "www.instagram.com");
+            return [{ address: "93.184.216.34", family: 4 }];
+        });
         const transfers = [];
         const server = http.createServer((request, response) => {
             if (request.method === "POST") {
