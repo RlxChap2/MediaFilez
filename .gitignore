@@ -1,7 +1,8 @@
 node_modules/
 .tools/
 .env
-.env.local
+.env.*
+!.env.example
 temp/
 tmp/
 temp_test/

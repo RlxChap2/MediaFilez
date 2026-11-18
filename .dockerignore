@@ -1,7 +1,7 @@
 node_modules
 .tools
-.env
-.env.local
+.git
+.env*
 temp
 tmp
 temp_test
