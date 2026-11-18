@@ -21,43 +21,55 @@ async function listen(handler) {
     return server;
 }
 
-test("allows a slow transfer while bytes continue to arrive", async (t) => {
+test("allows a transfer longer than the idle timeout while bytes continue to arrive", { timeout: 5_000 }, async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    let sendNextChunk;
     const server = await listen((_request, response) => {
         response.writeHead(200, { "content-type": "image/png" });
-        response.flushHeaders();
         let offset = 0;
-        const timer = setInterval(() => {
+        sendNextChunk = () => {
             const next = Math.min(PNG.length, offset + 10);
-            response.write(PNG.subarray(offset, next));
+            const chunk = PNG.subarray(offset, next);
             offset = next;
-
-            if (offset === PNG.length) {
-                clearInterval(timer);
-                response.end();
-            }
-        }, 20);
+            if (offset === PNG.length) response.end(chunk);
+            else response.write(chunk);
+        };
+        sendNextChunk();
     });
-    t.after(() => new Promise((resolve) => server.close(resolve)));
+    t.after(() => {
+        server.closeAllConnections();
+        return new Promise((resolve) => server.close(resolve));
+    });
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-http-"));
     t.after(() => fs.rm(dir, { recursive: true, force: true }));
     const host = `127.0.0.1:${server.address().port}`;
 
+    let elapsedMs = 0;
     const result = await downloadDirectHttp(`http://${host}/image.png`, dir, {
         maxBytes: 1024,
-        responseTimeoutMs: 50,
         idleTimeoutMs: 60,
         trustedHosts: ["127.0.0.1"],
+        onProgress({ downloadedBytes }) {
+            if (downloadedBytes === PNG.length) return;
+            t.mock.timers.tick(40);
+            elapsedMs += 40;
+            sendNextChunk();
+        },
     });
+    assert.ok(elapsedMs > 60);
     assert.equal(result.sizeBytes, PNG.length);
 });
 
-test("fails a transfer that stops making progress", async (t) => {
+test("fails a transfer that stops making progress", { timeout: 5_000 }, async (t) => {
+    t.mock.timers.enable({ apis: ["setTimeout"] });
     const server = await listen((_request, response) => {
         response.writeHead(200, { "content-type": "image/png" });
         response.write(PNG.subarray(0, 8));
-        setTimeout(() => response.end(), 150).unref();
     });
-    t.after(() => new Promise((resolve) => server.close(resolve)));
+    t.after(() => {
+        server.closeAllConnections();
+        return new Promise((resolve) => server.close(resolve));
+    });
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "mediafilez-http-"));
     t.after(() => fs.rm(dir, { recursive: true, force: true }));
     const host = `127.0.0.1:${server.address().port}`;
@@ -65,9 +77,9 @@ test("fails a transfer that stops making progress", async (t) => {
     await assert.rejects(
         downloadDirectHttp(`http://${host}/image.png`, dir, {
             maxBytes: 1024,
-            responseTimeoutMs: 50,
             idleTimeoutMs: 30,
             trustedHosts: ["127.0.0.1"],
+            onProgress: () => t.mock.timers.tick(31),
         }),
         /stalled/,
     );
