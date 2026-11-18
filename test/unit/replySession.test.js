@@ -354,6 +354,41 @@ test("cancels an upload retry wait when the whole job times out", async (t) => {
     assert.equal(reply.state, "open");
 });
 
+test("preserves unconfirmed delivery when the deadline interrupts verification", async (t) => {
+    const output = await fixture(t);
+    const controller = new AbortController();
+    const edits = [];
+    let uploads = 0;
+    const reply = new ReplySession(
+        {
+            fetchReply: async () => {
+                throw Object.assign(new Error("could not read the reply"), { status: 503 });
+            },
+            editReply: async (payload) => edits.push(payload),
+        },
+        {
+            upload: async () => {
+                uploads += 1;
+                throw Object.assign(new Error("upload acknowledgement was lost"), { code: "ECONNRESET" });
+            },
+            wait: async () => {
+                controller.abort();
+                return false;
+            },
+        },
+    );
+
+    const error = await reply.commit(output, details, { signal: controller.signal }).catch(async (failure) => {
+        await reply.fail(failure);
+        return failure;
+    });
+
+    assert.deepEqual(edits, []);
+    assert.equal(error.name, "DeliveryUnknownError");
+    assert.equal(reply.state, "unknown");
+    assert.equal(uploads, 1);
+});
+
 test("preserves user-facing messages even across module or realm boundaries", () => {
     assert.equal(
         messageForError({ name: "UserFacingError", message: "The measured file does not fit." }),

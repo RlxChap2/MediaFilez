@@ -172,13 +172,13 @@ export class ReplySession {
     }
 
     /**
-     * Waits before another Discord request while preserving the whole-job deadline.
+     * Waits before re-uploading an attachment confirmed absent.
      * @param {number} milliseconds - Requested backoff duration.
      * @param {AbortSignal} [signal] - Whole-job cancellation signal.
      * @param {Error} cause - Upload error that triggered the retry.
      * @returns {Promise<void>}
      */
-    async waitBeforeRetry(milliseconds, signal, cause) {
+    async waitBeforeUploadRetry(milliseconds, signal, cause) {
         const completed = await this.wait(milliseconds, signal);
 
         if (completed !== false && !signal?.aborted) return;
@@ -236,7 +236,7 @@ export class ReplySession {
 
                 return;
             } catch (uploadError) {
-                let verificationError;
+                let attachmentMissing = false;
 
                 for (let verification = 1; verification <= 3; verification += 1) {
                     try {
@@ -251,25 +251,20 @@ export class ReplySession {
                             return;
                         }
 
-                        verificationError = null;
+                        attachmentMissing = true;
                         break;
                     } catch (error) {
-                        verificationError = error;
+                        if (verification < 3 && isRetryableUploadError(error) && !options.signal?.aborted) {
+                            const waited = await this.wait(this.uploadRetryDelayMs * verification, options.signal);
 
-                        if (verification < 3 && isRetryableUploadError(error)) {
-                            await this.waitBeforeRetry(
-                                this.uploadRetryDelayMs * verification,
-                                options.signal,
-                                uploadError,
-                            );
-                            continue;
+                            if (waited !== false && !options.signal?.aborted) continue;
                         }
 
                         break;
                     }
                 }
 
-                if (verificationError) {
+                if (!attachmentMissing) {
                     this.state = "unknown";
 
                     throw new DeliveryUnknownError(
@@ -293,7 +288,7 @@ export class ReplySession {
                 log.warn(
                     `Discord did not accept upload attempt ${attempt}/${this.uploadAttempts} (${uploadErrorSummary(uploadError)}); retrying after verification.`,
                 );
-                await this.waitBeforeRetry(
+                await this.waitBeforeUploadRetry(
                     Math.max(this.uploadRetryDelayMs * attempt, uploadError.retryAfterMs || 0),
                     options.signal,
                     uploadError,
